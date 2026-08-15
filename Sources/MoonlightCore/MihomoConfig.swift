@@ -155,7 +155,7 @@ public struct MihomoConfig {
                 "name": defaultAutoGroup,
                 "type": "url-test",
                 "proxies": proxyNames,
-                "url": "https://www.gstatic.com/generate_204",
+                "url": MihomoAPI.probeURL,
                 "interval": 300,
                 "tolerance": 50,
             ],

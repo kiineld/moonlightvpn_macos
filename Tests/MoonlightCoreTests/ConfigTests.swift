@@ -87,6 +87,26 @@ func configTests() {
         )
     }
 
+    Check.suite("MihomoConfig · probe target") {
+        Check.equal(MihomoAPI.probeURL, "http://cp.cloudflare.com/generate_204",
+                    "the probe target is Cloudflare's captive-portal endpoint")
+        // http, not https: a TLS handshake to the *target* adds a round trip
+        // that says nothing about the path to the node.
+        Check.isTrue(MihomoAPI.probeURL.hasPrefix("http://"),
+                     "the probe does not pay for TLS to the target")
+
+        let bare = MihomoConfig.yamlFromProxies([
+            ["name": "A", "type": "ss", "server": "1.2.3.4", "port": 443,
+             "cipher": "aes-256-gcm", "password": "pw"],
+        ])
+        let auto = MihomoConfig.defaultGroups(proxyNames: ["A"])
+            .first { $0["name"] as? String == MihomoConfig.defaultAutoGroup }
+        Check.equal(auto?["url"] as? String, MihomoAPI.probeURL,
+                    "the injected url-test group measures against the same target")
+        Check.isTrue(bare.contains("cp.cloudflare.com"),
+                     "and it survives into the generated YAML")
+    }
+
     Check.suite("MihomoConfig · groupless config") {
         // The share-link fallback produces a bare proxy list.
         let bare = MihomoConfig.yamlFromProxies([

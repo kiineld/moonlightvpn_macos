@@ -207,8 +207,19 @@ answered.
 
 ## Latency probing
 
-Measured through the running core's `/proxies/{name}/delay`, so each probe uses
-that node's own outbound. The core multiplexes them, so a full pass costs about
+Measured through the running core's `/proxies/{name}/delay` against
+`http://cp.cloudflare.com/generate_204`, so each probe uses that node's own
+outbound. The same target drives the `url-test` group this client injects.
+
+**http, not https**, and Cloudflare rather than Google: the probe is timing the
+path to the node, and a TLS handshake to the *target* adds a round trip that
+says nothing about it. Cloudflare answers `204` with an empty body from a global
+anycast address, so the number is about the node rather than about which
+continent the target sits on. Switching to it on a live 20-node subscription
+took the fastest node from 162 ms to 37 ms and raised the nodes that answered at
+all from 10 to 18 — `gstatic.com` is itself blocked or slow from several of
+them, which made the probe measure the target's reachability instead of the
+node's. The core multiplexes them, so a full pass costs about
 as long as its slowest node rather than the sum; concurrency is still capped at
 8, because a subscription with sixty nodes would otherwise open sixty TLS
 handshakes at once and measure congestion instead of latency.

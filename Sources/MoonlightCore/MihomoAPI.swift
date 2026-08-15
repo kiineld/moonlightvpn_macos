@@ -34,6 +34,16 @@ public actor MihomoAPI {
         }
     }
 
+    /// The target every latency measurement is made against — both the `Пинг`
+    /// button's probes and the `url-test` group this client injects.
+    ///
+    /// Cloudflare's captive-portal endpoint over **http**, not https: the probe
+    /// is timing the path to the node, and a TLS handshake to the target adds a
+    /// round trip that has nothing to do with it. It answers `204` with an empty
+    /// body from a global anycast address, so the number is about the node
+    /// rather than about which continent the target happens to be on.
+    public static let probeURL = "http://cp.cloudflare.com/generate_204"
+
     private let base: URL
     private let secret: String
     private let session: URLSession
@@ -128,7 +138,7 @@ public actor MihomoAPI {
     /// should surface as a failure of the probe.
     public func delay(
         node: String,
-        url: String = "https://www.gstatic.com/generate_204",
+        url: String = MihomoAPI.probeURL,
         timeout: Int = 5000
     ) async -> Int? {
         var components = URLComponents(string: base.absoluteString + "/proxies/\(escape(node))/delay")
