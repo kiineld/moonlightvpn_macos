@@ -1,0 +1,13 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+
+# Fetched by scripts/, not committed — the core alone is 90 MB.
+Resources/mihomo/
+Resources/fonts/
+vendor/lucide/
+
+# Generated from the logo at build time.
+Resources/AppIcon.icns

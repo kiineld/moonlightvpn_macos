@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Generate Sources/MoonlightDesign/Icons.swift from lucide-static SVGs.
+
+The design is drawn with lucide 0.468.0, so the geometry is carried across as
+raw path data rather than redrawn or swapped for SF Symbols — stroke geometry
+stays identical to the source.
+
+Non-path elements (circle, rect, line, polyline, polygon) are converted to path
+commands *here*, at generation time, so the Swift renderer only has to
+understand one thing: an SVG path `d` string.
+
+    scripts/fetch-icons.sh && python3 scripts/gen-icons.py
+"""
+import re
+import sys
+import pathlib
+
+SRC = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "vendor/lucide")
+OUT = pathlib.Path("Sources/MoonlightDesign/Icons.swift")
+
+# Lucide id -> the PascalCase name the design composition uses.
+NAMES = {
+    "power": "power", "sparkles": "sparkles", "layers": "layers",
+    "settings": "settings", "activity": "activity", "refresh-cw": "refreshCW",
+    "sun": "sun", "moon": "moon", "zap": "zap", "copy": "copy",
+    "external-link": "externalLink", "plus": "plus",
+    "chevron-right": "chevronRight", "chevron-left": "chevronLeft",
+    "monitor": "monitor", "smartphone": "smartphone", "check": "check",
+    "link-2": "link2", "send": "send", "message-circle": "messageCircle",
+    "headphones": "headphones", "lock": "lock", "minus": "minus",
+    "square": "square", "x": "x", "globe": "globe", "wifi-off": "wifiOff",
+    "shield": "shield", "trash-2": "trash2", "search": "search",
+    "circle-alert": "circleAlert", "loader-circle": "loaderCircle",
+    "download": "download", "play": "play",
+}
+
+
+def attrs(tag):
+    # The name class must allow digits: `x1`/`y1`/`x2`/`y2` on <line> are the
+    # whole content of several icons, and a letters-only pattern silently
+    # matched nothing and produced a zero-length path instead of failing.
+    return dict(re.findall(r'([a-zA-Z][a-zA-Z0-9-]*)\s*=\s*"([^"]*)"', tag))
+
+
+def num(a, key, default=0.0):
+    try:
+        return float(a.get(key, default))
+    except ValueError:
+        return default
+
+
+def circle_to_path(a):
+    cx, cy, r = num(a, "cx"), num(a, "cy"), num(a, "r")
+    # Two half-arcs — a single 360° arc is degenerate and renders as nothing.
+    return (f"M{cx - r} {cy}"
+            f"a{r} {r} 0 1 0 {2 * r} 0"
+            f"a{r} {r} 0 1 0 {-2 * r} 0Z")
+
+
+def ellipse_to_path(a):
+    cx, cy = num(a, "cx"), num(a, "cy")
+    rx, ry = num(a, "rx"), num(a, "ry")
+    return (f"M{cx - rx} {cy}"
+            f"a{rx} {ry} 0 1 0 {2 * rx} 0"
+            f"a{rx} {ry} 0 1 0 {-2 * rx} 0Z")
+
+
+def rect_to_path(a):
+    x, y = num(a, "x"), num(a, "y")
+    w, h = num(a, "width"), num(a, "height")
+    rx = num(a, "rx", num(a, "ry", 0))
+    ry = num(a, "ry", rx)
+    if rx <= 0 and ry <= 0:
+        return f"M{x} {y}H{x + w}V{y + h}H{x}Z"
+    rx, ry = min(rx, w / 2), min(ry, h / 2)
+    return (f"M{x + rx} {y}"
+            f"H{x + w - rx}"
+            f"a{rx} {ry} 0 0 1 {rx} {ry}"
+            f"V{y + h - ry}"
+            f"a{rx} {ry} 0 0 1 {-rx} {ry}"
+            f"H{x + rx}"
+            f"a{rx} {ry} 0 0 1 {-rx} {-ry}"
+            f"V{y + ry}"
+            f"a{rx} {ry} 0 0 1 {rx} {-ry}Z")
+
+
+def line_to_path(a):
+    return f"M{num(a, 'x1')} {num(a, 'y1')}L{num(a, 'x2')} {num(a, 'y2')}"
+
+
+def points_to_path(a, close):
+    pts = re.findall(r"[-+]?[0-9]*\.?[0-9]+", a.get("points", ""))
+    if len(pts) < 4:
+        return None
+    pairs = [f"{pts[i]} {pts[i + 1]}" for i in range(0, len(pts) - 1, 2)]
+    return "M" + "L".join(pairs) + ("Z" if close else "")
+
+
+CONVERT = {
+    "path": lambda a: a.get("d"),
+    "circle": circle_to_path,
+    "ellipse": ellipse_to_path,
+    "rect": rect_to_path,
+    "line": line_to_path,
+    "polyline": lambda a: points_to_path(a, False),
+    "polygon": lambda a: points_to_path(a, True),
+}
+
+
+def parse(svg_text):
+    out = []
+    for tag, body in re.findall(r"<(path|circle|ellipse|rect|line|polyline|polygon)\b([^>]*)/?>", svg_text):
+        d = CONVERT[tag](attrs(body))
+        if d:
+            out.append(" ".join(d.split()))
+    return out
+
+
+def main():
+    if not SRC.is_dir():
+        sys.exit(f"{SRC} not found — run scripts/fetch-icons.sh first")
+
+    entries = []
+    for lucide_id, swift_name in sorted(NAMES.items(), key=lambda kv: kv[1]):
+        f = SRC / f"{lucide_id}.svg"
+        if not f.is_file():
+            sys.exit(f"missing {f}")
+        paths = parse(f.read_text())
+        if not paths:
+            sys.exit(f"{f} produced no path data")
+        # A path made entirely of zeros means an attribute was not read — the
+        # icon still renders, as nothing, which is the failure mode this catches.
+        degenerate = [d for d in paths if not re.search(r"[1-9]", d)]
+        if degenerate:
+            sys.exit(f"{f}: degenerate path {degenerate[0]!r} — check the attribute parser")
+        entries.append((swift_name, lucide_id, paths))
+
+    lines = [
+        "// Generated by scripts/gen-icons.py — do not edit by hand.",
+        "// Source: lucide-static 0.468.0 (ISC), the set the design is drawn with.",
+        "//",
+        "// Every element is carried across as path data, including the ones lucide",
+        "// draws as <circle>/<rect>/<line>/<polyline> — they are converted to path",
+        "// commands at generation time so the renderer only parses `d` strings.",
+        "",
+        "public enum Icon: String, CaseIterable, Sendable {",
+    ]
+    for swift_name, lucide_id, _ in entries:
+        lines.append(f'    case {swift_name} = "{lucide_id}"')
+    lines += [
+        "",
+        "    /// SVG path `d` strings in lucide's 24×24 viewBox, stroked, never filled.",
+        "    public var paths: [String] {",
+        "        switch self {",
+    ]
+    for swift_name, _, paths in entries:
+        body = ", ".join('"%s"' % p.replace("\\", "\\\\").replace('"', '\\"') for p in paths)
+        lines.append(f"        case .{swift_name}: return [{body}]")
+    lines += [
+        "        }",
+        "    }",
+        "}",
+        "",
+    ]
+    OUT.write_text("\n".join(lines))
+    print(f"wrote {OUT} — {len(entries)} icons")
+
+
+if __name__ == "__main__":
+    main()
