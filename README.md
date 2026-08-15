@@ -104,12 +104,35 @@ waiting to happen, so it is deliberately narrow:
 
 ## Split tunnelling
 
-Per-app rules are `PROCESS-NAME` rules in the mihomo config, matched on the
-**executable name** — `CFBundleExecutable`, not the bundle id, because the core
-sees a process. They only work in TUN mode: under a system proxy the core is
-handed a socket with no process behind it, so the rules would be written and
-silently never match. The screen says so and offers the switch rather than
-letting that happen.
+Two ways in to one list of rules. The app toggles are a convenience over
+`PROCESS-NAME`, matched on the **executable name** — `CFBundleExecutable`, not
+the bundle id, because the core sees a process. The rules panel is the general
+form:
+
+| Kind | |
+|---|---|
+| `PROCESS-NAME` `PROCESS-NAME-REGEX` | by process, exact or regex |
+| `PROCESS-PATH` `PROCESS-PATH-REGEX` | by executable path |
+| `DOMAIN` `DOMAIN-SUFFIX` `DOMAIN-KEYWORD` `DOMAIN-REGEX` | by host |
+| `IP-CIDR` `GEOIP` | by address |
+| `GEOSITE` | by mihomo's site database |
+| `DST-PORT` | by destination port |
+
+The TUN constraint is **per rule, not per screen**. `PROCESS-*` rules need the
+core to identify the process behind a connection, which only TUN can do — under
+a system proxy the core is handed a socket with no process behind it, so those
+rules are dropped from the generated config rather than written and silently
+never matched. Domain, address and port rules work in both modes.
+
+`find-process-mode` is only switched on when a process rule is actually present:
+finding the process costs a syscall per connection, and a config of domain rules
+does not need it.
+
+A value is validated before it can be added — regexes are compiled, ports and
+CIDRs are range-checked, and commas are refused because mihomo splits a rule on
+them. This matters more than it looks: a bad rule does not fail on its own, the
+core refuses the **whole config**, so the tunnel stops rather than the rule being
+skipped.
 
 The three modes are not symmetric, because preserving the panel's own routing
 means something different in each:
@@ -117,13 +140,13 @@ means something different in each:
 | Mode | Rules |
 |---|---|
 | All traffic | the panel's rules, untouched |
-| Except these | `PROCESS-NAME,<exe>,DIRECT` prepended — the named apps never reach the panel's rules, everything else sees them as written |
-| Only these | the named apps are handed to the panel's rules through a `SUB-RULE`, and everything else falls to `MATCH,DIRECT` |
+| Except these | the split rules prepended pointing at `DIRECT` — what they match never reaches the panel's rules, everything else sees them as written |
+| Only these | what they match is handed to the panel's rules through a `SUB-RULE`, and everything else falls to `MATCH,DIRECT` |
 
-"Only these" could have been `PROCESS-NAME,<exe>,<selector>`, which is simpler
-and wrong: it forces *all* of that app's traffic through the node, including the
-hosts the panel deliberately routes direct, so a selected browser would lose the
-panel's split for local sites.
+"Only these" could have pointed the rules straight at the selector, which is
+simpler and wrong: it forces *all* of that traffic through the node, including
+the hosts the panel deliberately routes direct, so a selected browser would lose
+the panel's split for local sites.
 
 An empty selection in "only these" falls back to tunnelling everything — an
 empty allow-list routes nothing at all, which reads as a broken VPN rather than
@@ -250,14 +273,17 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-156 checks. A plain executable rather than XCTest, because XCTest ships with
+175 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`
 parsing (partial, malformed, absent, zero-means-unlimited), share-link metadata
 across four schemes, URL normalisation (a `file://` or `vless://` link must not
 be rewritten into a plausible `https://` one), config assembly, and all three
-split modes.
+split modes, and every rule kind the UI offers — each one checked in **both**
+positions, as a plain rule and inside a `SUB-RULE` matcher, because mihomo
+accepts different grammars in the two and a rule that only works in one produces
+a config the core refuses.
 
 The last suite runs the **real mihomo binary**: every config shape the app can
 produce goes through `mihomo -t`, and one is started for real so the RESTful API
@@ -292,9 +318,10 @@ cleartext only happens when the user types `http://` themselves.
   traffic to a real node has not been exercised. That needs a live subscription.
   The end-to-end path was driven against a local stand-in panel serving a
   Remnawave-shaped response.
-- **The helper has not been installed on a clean machine.** The install script
-  and the socket protocol are written and reviewed; the administrator prompt
-  path has not been run end to end.
+- **Sidebar hover in light mode is unverified.** It was a white wash on a
+  near-white sidebar; it is now an accent tint with accent-ink text and a
+  hairline. Synthetic pointer events do not reach SwiftUI's tracking areas, so
+  the change is by construction rather than observed.
 - **Not notarised.** See *First launch*.
 - The entrance stagger is attached with `.animation(_:value:)` rather than
   `withAnimation`, so if the animation is dropped the card appears without

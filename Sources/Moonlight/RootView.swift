@@ -48,7 +48,15 @@ struct RootView: View {
         .padding(.top, 20)
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .transition(.opacity)
+        // `id(page)` makes each screen an insertion rather than a mutation, so
+        // the transition actually plays — without it SwiftUI reuses the view and
+        // only the differing subviews animate. It also resets each screen's
+        // local state, which is what re-runs their `onAppear` loads.
+        .id(page)
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .offset(y: 12)),
+            removal: .opacity
+        ))
         .animation(Motion.enter, value: page)
 
     }
@@ -65,11 +73,16 @@ struct RootView: View {
 
 // MARK: - Title bar
 
-/// The 40px strip the window's traffic lights sit in.
+/// The strip the window's traffic lights sit in.
 ///
 /// The window uses a hidden title bar, so the system buttons float over this
-/// view's leading edge — hence the 78pt of leading padding rather than the
-/// design's own drawn circles. Drawing fake ones would give the window two sets.
+/// view's leading edge — hence the leading padding rather than the design's own
+/// drawn circles. Drawing fake ones would give the window two sets.
+///
+/// The height is 28pt, not the design's 40, because AppKit centres the traffic
+/// lights in the *standard* titlebar height and gives no supported way to move
+/// them. At 40pt the wordmark sat six points below the buttons; matching the
+/// height is what puts them on one row.
 private struct TitleBar: View {
     @Environment(\.palette) private var palette
     let status: String
@@ -90,7 +103,7 @@ private struct TitleBar: View {
         .foregroundStyle(palette.textMuted)
         .padding(.leading, 78)
         .padding(.trailing, 14)
-        .frame(height: 40)
+        .frame(height: 28)
         .frame(maxWidth: .infinity)
         .background(palette.bgDeep)
         .overlay(alignment: .bottom) { palette.hairline.frame(height: 1) }
@@ -141,9 +154,21 @@ private struct Sidebar: View {
         .overlay(alignment: .trailing) { palette.hairline.frame(width: 1) }
     }
 
+    /// With no subscription there is nothing to be unknown *about*, so the
+    /// figures read zero. "—" and "без срока" are answers about a plan, and
+    /// showing them before one exists looks like a plan whose panel omitted a
+    /// field.
+    private var planDays: String {
+        guard tunnel.hasSubscription else { return Format.days(0, locale: locale) }
+        return Format.days(tunnel.info.daysLeft, locale: locale)
+    }
+
     /// "24,8 из 100 ГБ трафика" — a sentence, so an unlimited plan says so
     /// rather than reading as "— of unlimited of traffic".
     private var quotaLine: String {
+        guard tunnel.hasSubscription else {
+            return "\(Format.bytes(0, locale: locale)) \(L.t(.trafficOf, locale))"
+        }
         guard tunnel.info.total != nil else {
             return "\(L.t(.unlimited, locale)) \(L.t(.trafficOf, locale))"
         }
@@ -159,20 +184,23 @@ private struct Sidebar: View {
                 HStack {
                     Overline(text: L.t(.remainingCaps, locale))
                     Spacer(minLength: 8)
-                    Text(L.t(tunnel.info.isActive ? .active : .expired, locale))
-                        .font(.ml(10.5, .heavy))
-                        .foregroundStyle(palette.textOnAccent)
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background(tunnel.info.isActive ? palette.accent : palette.danger)
-                        .clipShape(Capsule())
+                    if tunnel.hasSubscription {
+                        Text(L.t(tunnel.info.isActive ? .active : .expired, locale))
+                            .font(.ml(10.5, .heavy))
+                            .foregroundStyle(palette.textOnAccent)
+                            .padding(.horizontal, 9)
+                            .frame(height: 22)
+                            .background(tunnel.info.isActive ? palette.accent : palette.danger)
+                            .clipShape(Capsule())
+                    }
                 }
-                Text(Format.days(tunnel.info.daysLeft, locale: locale))
+                Text(planDays)
                     .font(.mlDisplay(22))
                     .tracking(TypeScale.trackDisplay * 22)
                     .foregroundStyle(palette.text)
                     .padding(.top, 8)
-                QuotaBar(fraction: tunnel.info.usedFraction.map { 1 - $0 }, height: 6)
+                QuotaBar(fraction: tunnel.hasSubscription
+                         ? tunnel.info.usedFraction.map { 1 - $0 } : 0, height: 6)
                     .padding(.top, 10)
                 Text(quotaLine)
                     .font(.ml(12))
@@ -210,10 +238,24 @@ private struct NavItem: View {
                 Text(title).font(.ml(14, .heavy))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(active ? palette.textOnAccent : palette.text2)
+            // Hover shifts the label to accent ink as well as washing the
+            // background: on the near-white light sidebar a background tint
+            // alone is barely a change, and the design's hover language is a
+            // colour shift rather than a fill.
+            .foregroundStyle(active ? palette.textOnAccent
+                             : (hovering ? palette.accentInk : palette.text2))
             .padding(.horizontal, 12)
             .frame(height: 44)
-            .background(active ? palette.accent : (hovering ? palette.surface : .clear))
+            // `surface` is white in light mode, which on the near-white sidebar
+            // reads as a smudge rather than a hover. The accent wash is a tint in
+            // both themes.
+            .background(active ? palette.accent : (hovering ? palette.accentQuiet : .clear))
+            .overlay(
+                Capsule().strokeBorder(
+                    hovering && !active ? palette.accentLine.opacity(0.5) : .clear,
+                    lineWidth: 1
+                )
+            )
             .clipShape(Capsule())
             .contentShape(Rectangle())
         }

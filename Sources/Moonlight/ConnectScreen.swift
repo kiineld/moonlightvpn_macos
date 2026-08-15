@@ -66,7 +66,9 @@ struct ConnectScreen: View {
             divider
             counter(L.t(.uploaded, locale), Format.bytes(tunnel.sessionUp, locale: locale))
             divider
-            counter(L.t(.remaining, locale), Format.days(tunnel.info.daysLeft, locale: locale))
+            counter(L.t(.remaining, locale), tunnel.hasSubscription
+                    ? Format.days(tunnel.info.daysLeft, locale: locale)
+                    : Format.days(0, locale: locale))
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 6)

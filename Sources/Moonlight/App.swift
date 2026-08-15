@@ -121,29 +121,59 @@ private struct MenuBarContent: View {
     }
 }
 
+/// The menu-bar glyph, drawn from the logo's own crescent path rather than
+/// approximated with two overlapping circles — the earlier version read as a
+/// blob at 18pt.
+///
+/// Both states are built once. Constructing an `NSImage` inside the scene body
+/// rebuilds it on every update.
 private enum MenuBarIcon {
-    static let connected = image(connected: true)
-    static let idle = image(connected: false)
+    static let connected = render(alpha: 1)
+    static let idle = render(alpha: 0.55)
 
-    /// The logo's crescent, drawn at menu-bar size as a template image.
-    private static func image(connected: Bool) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let path = NSBezierPath()
-            let scale = rect.width / 24
-            // A crescent: a filled disc with a second disc punched out of it.
-            path.appendOval(in: NSRect(x: 4 * scale, y: 4 * scale,
-                                       width: 16 * scale, height: 16 * scale))
-            path.appendOval(in: NSRect(x: 10 * scale, y: 8 * scale,
-                                       width: 15 * scale, height: 15 * scale))
-            path.windingRule = .evenOdd
-            NSColor.black.setFill()
-            path.fill()
-            if !connected {
-                // Disconnected reads as an outline rather than a solid mark.
-                NSColor.black.withAlphaComponent(0.45).setFill()
-                NSRect(origin: .zero, size: rect.size).fill(using: .destinationIn)
+    /// The crescent and its two dots, from `assets/logo-tile.svg`, in the same
+    /// 44-unit box the tile uses.
+    private static let shapes: [String] = [
+        "M30 22a8.4 8.4 0 1 1-9.4-8.34A10 10 0 0 0 30 22Z",
+        "M28.8 12.5a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0 -3.4 0Z",
+        "M23.9 8a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0 -2.2 0Z",
+    ]
+
+    /// A template image, so the glyph inverts with the menu bar's own appearance
+    /// instead of staying lime on a light bar. Connected is solid; disconnected
+    /// is the same shape at lower alpha, which a template image renders as a
+    /// lighter mark rather than a different colour.
+    private static func render(alpha: CGFloat) -> NSImage {
+        let side: CGFloat = 18
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
+            guard let context = NSGraphicsContext.current?.cgContext else { return true }
+
+            let combined = CGMutablePath()
+            for d in shapes {
+                combined.addPath(SVGPath(d).path(
+                    in: CGRect(x: 0, y: 0, width: 44, height: 44), viewBox: 44
+                ).cgPath)
             }
+
+            // Fit the glyph's own bounds rather than the 44-unit box: the
+            // crescent sits off-centre in the tile, and centring the box would
+            // leave the mark visibly high and small in the bar.
+            let bounds = combined.boundingBoxOfPath
+            guard bounds.width > 0, bounds.height > 0 else { return true }
+            let inset: CGFloat = 1.5
+            let scale = min((side - inset * 2) / bounds.width,
+                            (side - inset * 2) / bounds.height)
+
+            var transform = CGAffineTransform.identity
+                .translatedBy(x: (side - bounds.width * scale) / 2,
+                              y: (side - bounds.height * scale) / 2)
+                .scaledBy(x: scale, y: -scale)          // SVG's y axis runs down
+                .translatedBy(x: -bounds.minX, y: -bounds.maxY)
+
+            guard let fitted = combined.copy(using: &transform) else { return true }
+            context.addPath(fitted)
+            context.setFillColor(NSColor.black.withAlphaComponent(alpha).cgColor)
+            context.fillPath()
             return true
         }
         image.isTemplate = true

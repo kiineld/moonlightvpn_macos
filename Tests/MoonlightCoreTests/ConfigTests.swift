@@ -5,11 +5,11 @@ import MoonlightCore
 private func overrides(
     mode: TunnelMode = .systemProxy,
     split: SplitMode = .all,
-    processes: [String] = []
+    rules: [SplitRule] = []
 ) -> MihomoConfig.Overrides {
     MihomoConfig.Overrides(
         controllerPort: 9797, secret: "s3cret", mixedPort: 7897,
-        mode: mode, splitMode: split, splitProcesses: processes,
+        mode: mode, splitMode: split, splitRules: rules,
         dataDirectory: "/tmp/moonlight-core"
     )
 }

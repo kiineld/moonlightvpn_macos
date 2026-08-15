@@ -9,8 +9,6 @@ struct SubscriptionScreen: View {
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
 
-    @State private var copied = false
-
     var body: some View {
         ScrollView {
             columns.padding(.bottom, 8)
@@ -23,12 +21,10 @@ struct SubscriptionScreen: View {
             VStack(spacing: 14) {
                 planCard.rise(0, page)
                 trafficCard.rise(0.06, page)
-                linkCard.rise(0.12, page)
             }
             VStack(spacing: 14) {
                 refreshRow.rise(0.1, page)
                 actionRows.rise(0.16, page)
-                devicesCard.rise(0.22, page)
             }
             .frame(width: 360)
         }
@@ -131,72 +127,6 @@ struct SubscriptionScreen: View {
         return "\(L.t(.validUntil, locale)) \(Format.date(expire, locale: locale))"
     }
 
-    // MARK: - Link
-
-    private var linkCard: some View {
-        Panel(padding: 18) {
-            VStack(alignment: .leading, spacing: 0) {
-                Overline(text: L.t(.subscriptionLink, locale))
-                HStack(spacing: 8) {
-                    Text(tunnel.subscriptionURL ?? "—")
-                        .font(.mlMono(12.5))
-                        .foregroundStyle(palette.text2)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .frame(height: 42)
-                        .background(palette.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: Radii.field, style: .continuous))
-
-                    Button {
-                        copyLink()
-                    } label: {
-                        HStack(spacing: 8) {
-                            IconView(copied ? .check : .copy, size: 16)
-                            Text(L.t(copied ? .copied : .copy, locale)).font(.ml(13, .heavy))
-                        }
-                        .foregroundStyle(palette.text)
-                        .padding(.horizontal, 15)
-                        .frame(height: 42)
-                        .background(palette.surface3)
-                        .clipShape(Capsule())
-                    }
-                    .pressButton()
-                    .disabled(tunnel.subscriptionURL == nil)
-                }
-                .padding(.top, 12)
-
-                if let source = tunnel.subscriptionSource {
-                    Text(sourceLabel(source))
-                        .font(.ml(12))
-                        .foregroundStyle(source == .shareLinks ? palette.warning : palette.textMuted)
-                        .padding(.top, 10)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    private func sourceLabel(_ source: SubscriptionClient.Source) -> String {
-        switch source {
-        case .mihomo: return L.t(.sourceMihomo, locale)
-        case .clash: return L.t(.sourceClash, locale)
-        case .shareLinks: return L.t(.sourceShareLinks, locale)
-        }
-    }
-
-    private func copyLink() {
-        guard let url = tunnel.subscriptionURL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url, forType: .string)
-        copied = true
-        Task {
-            try? await Task.sleep(nanoseconds: 1_600_000_000)
-            copied = false
-        }
-    }
-
     // MARK: - Actions
 
     private var refreshRow: some View {
@@ -257,42 +187,4 @@ struct SubscriptionScreen: View {
         }
     }
 
-    // MARK: - Devices
-
-    private var devicesCard: some View {
-        Panel(padding: 20) {
-            VStack(alignment: .leading, spacing: 0) {
-                Overline(text: L.t(.devicesCaps, locale))
-                HStack(spacing: 12) {
-                    IconView(.monitor, size: 18)
-                        .foregroundStyle(palette.accentInk)
-                        .frame(width: 38, height: 38)
-                        .background(palette.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(AppConfig.deviceName)
-                            .font(.ml(14, .bold))
-                            .foregroundStyle(palette.text)
-                        Text(L.t(.thisDevice, locale))
-                            .font(.ml(12))
-                            .foregroundStyle(palette.accentInk)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 14)
-
-                if let free = freeSlots {
-                    Text("\(L.t(.slotsFree, locale)) \(Format.slots(free, locale: locale))")
-                        .font(.ml(TypeScale.meta))
-                        .foregroundStyle(palette.textMuted)
-                        .padding(.top, 16)
-                }
-            }
-        }
-    }
-
-    private var freeSlots: Int? {
-        guard let limit = tunnel.info.deviceLimit else { return nil }
-        return max(0, limit - (tunnel.info.devicesUsed ?? 1))
-    }
 }

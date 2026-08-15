@@ -22,8 +22,9 @@ public struct MihomoConfig {
         public var mixedPort: Int
         public var mode: TunnelMode
         public var splitMode: SplitMode
-        /// Executable names, as `PROCESS-NAME` matches them.
-        public var splitProcesses: [String]
+        /// Every rule the split screen contributes — the app toggles and the
+        /// hand-written ones alike.
+        public var splitRules: [SplitRule]
         public var logLevel: String
         /// Where mihomo keeps its geo databases and cache.
         public var dataDirectory: String
@@ -34,7 +35,7 @@ public struct MihomoConfig {
             mixedPort: Int = 7897,
             mode: TunnelMode = .systemProxy,
             splitMode: SplitMode = .all,
-            splitProcesses: [String] = [],
+            splitRules: [SplitRule] = [],
             logLevel: String = "warning",
             dataDirectory: String
         ) {
@@ -43,7 +44,7 @@ public struct MihomoConfig {
             self.mixedPort = mixedPort
             self.mode = mode
             self.splitMode = splitMode
-            self.splitProcesses = splitProcesses
+            self.splitRules = splitRules
             self.logLevel = logLevel
             self.dataDirectory = dataDirectory
         }
@@ -86,9 +87,12 @@ public struct MihomoConfig {
                     "external-controller-tls", "external-controller-unix"] {
             root.removeValue(forKey: key)
         }
-        // Process matching is what makes the split-tunnel screen work at all,
-        // and mihomo only populates it when asked.
-        root["find-process-mode"] = overrides.splitMode == .all ? "off" : "always"
+        // Finding the process behind a connection costs a syscall per
+        // connection, so it is only switched on when a rule actually needs it —
+        // a config of domain and address rules does not.
+        let needsProcess = overrides.splitMode != .all
+            && overrides.splitRules.contains { $0.enabled && $0.kind.needsProcessMatching }
+        root["find-process-mode"] = needsProcess ? "always" : "off"
 
         // ── Groups ──────────────────────────────────────────────────────────
         // A config from the share-link fallback has no groups; one from a panel
@@ -107,7 +111,7 @@ public struct MihomoConfig {
         root["rules"] = applySplit(
             rules: rules,
             mode: overrides.splitMode,
-            processes: overrides.splitProcesses,
+            splitRules: overrides.splitRules,
             selector: primarySelectorName(groups: groups, rules: rules),
             root: &root
         )
@@ -184,13 +188,13 @@ public struct MihomoConfig {
     /// means something different in each:
     ///
     /// - **all** — the panel's rules, untouched.
-    /// - **except** — `PROCESS-NAME,<exe>,DIRECT` prepended. This composes
-    ///   cleanly: the named apps never reach the panel's rules, everything else
-    ///   sees them exactly as written.
-    /// - **only** — the named apps are handed to the panel's rules through a
-    ///   `SUB-RULE`, and everything else falls to `MATCH,DIRECT`. Prepending
-    ///   `PROCESS-NAME,<exe>,<selector>` instead would work, but it would force
-    ///   *all* of that app's traffic through the node — including the hosts the
+    /// - **except** — the split rules are prepended pointing at `DIRECT`. This
+    ///   composes cleanly: what they match never reaches the panel's rules, and
+    ///   everything else sees them exactly as written.
+    /// - **only** — what the split rules match is handed to the panel's rules
+    ///   through a `SUB-RULE`, and everything else falls to `MATCH,DIRECT`.
+    ///   Pointing them straight at the selector instead would work, but it would
+    ///   force *all* of that traffic through the node — including the hosts the
     ///   panel deliberately routes direct — so a selected browser would lose the
     ///   panel's split for local sites.
     ///
@@ -200,26 +204,28 @@ public struct MihomoConfig {
     public static func applySplit(
         rules: [String],
         mode: SplitMode,
-        processes: [String],
+        splitRules: [SplitRule],
         selector: String,
         root: inout [String: Any]
     ) -> [String] {
-        let processes = processes.filter { !$0.isEmpty }
+        let active = splitRules.filter {
+            $0.enabled && !$0.value.trimmingCharacters(in: .whitespaces).isEmpty
+        }
 
         switch mode {
         case .all:
             return rules
 
         case .except:
-            guard !processes.isEmpty else { return rules }
-            return processes.map { "PROCESS-NAME,\($0),DIRECT" } + rules
+            guard !active.isEmpty else { return rules }
+            return active.map { $0.line(target: "DIRECT") } + rules
 
         case .only:
-            guard !processes.isEmpty else { return rules }
+            guard !active.isEmpty else { return rules }
             var subRules = root["sub-rules"] as? [String: Any] ?? [:]
             subRules[panelSubRule] = rules
             root["sub-rules"] = subRules
-            return processes.map { "SUB-RULE,(PROCESS-NAME,\($0)),\(panelSubRule)" }
+            return active.map { "SUB-RULE,\($0.matcher()),\(panelSubRule)" }
                 + ["MATCH,DIRECT"]
         }
     }

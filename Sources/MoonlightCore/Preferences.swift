@@ -26,7 +26,7 @@ public final class Preferences: @unchecked Sendable {
         static let locale = "locale"
         static let tunnelMode = "tunnelMode"
         static let splitMode = "splitMode"
-        static let splitApps = "splitApps"
+        static let splitRules = "splitRules"
         static let launchAtLogin = "launchAtLogin"
         static let menuBarIcon = "menuBarIcon"
         static let autoConnect = "autoConnect"
@@ -101,10 +101,16 @@ public final class Preferences: @unchecked Sendable {
         set { defaults.set(newValue.rawValue, forKey: Key.splitMode) }
     }
 
-    /// Executable names, as `PROCESS-NAME` matches them.
-    public var splitApps: Set<String> {
-        get { Set(defaults.stringArray(forKey: Key.splitApps) ?? []) }
-        set { defaults.set(Array(newValue).sorted(), forKey: Key.splitApps) }
+    /// Every split rule — the ones the app list generated and the hand-written
+    /// ones, in one list, because they are the same thing to the core.
+    public var splitRules: [SplitRule] {
+        get {
+            guard let data = defaults.data(forKey: Key.splitRules) else { return [] }
+            return (try? JSONDecoder().decode([SplitRule].self, from: data)) ?? []
+        }
+        set {
+            defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.splitRules)
+        }
     }
 
     public var launchAtLogin: Bool {

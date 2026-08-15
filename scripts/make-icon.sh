@@ -10,12 +10,17 @@ OUT="${1:-Resources/AppIcon.icns}"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# The tile is inset to Apple's 824-in-1024 grid for rounded-rect icons, so it
+# sits at the same visual weight as every other app in the Dock. Drawn at the
+# full canvas it looked a size larger than its neighbours.
 cat > "$tmp/icon.svg" <<'SVG'
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 44 44">
-  <rect width="44" height="44" rx="13" fill="#D2FF1F"/>
-  <path d="M30 22a8.4 8.4 0 1 1-9.4-8.34A10 10 0 0 0 30 22Z" fill="#101828"/>
-  <circle cx="30.5" cy="12.5" r="1.7" fill="#101828"/>
-  <circle cx="25" cy="8" r="1.1" fill="#101828"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(100 100) scale(18.727)">
+    <rect width="44" height="44" rx="13" fill="#D2FF1F"/>
+    <path d="M30 22a8.4 8.4 0 1 1-9.4-8.34A10 10 0 0 0 30 22Z" fill="#101828"/>
+    <circle cx="30.5" cy="12.5" r="1.7" fill="#101828"/>
+    <circle cx="25" cy="8" r="1.1" fill="#101828"/>
+  </g>
 </svg>
 SVG
 

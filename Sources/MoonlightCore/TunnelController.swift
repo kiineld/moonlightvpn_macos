@@ -75,7 +75,15 @@ public final class TunnelController: ObservableObject {
 
         selectedNode = preferences.selectedNode
         autoSelect = preferences.autoSelect
-        info = preferences.cachedInfo ?? SubscriptionInfo()
+        // Cached figures outlive the subscription they describe, and a fresh
+        // install that inherited them from a removed plan would show days and
+        // traffic for a subscription that is not there.
+        if preferences.subscriptionURL?.isEmpty == false {
+            info = preferences.cachedInfo ?? SubscriptionInfo()
+        } else {
+            preferences.cachedInfo = nil
+            info = SubscriptionInfo()
+        }
 
         core.onUnexpectedExit = { [weak self] status in
             Task { @MainActor in
@@ -400,13 +408,13 @@ public final class TunnelController: ObservableObject {
         await reapplyRouting()
     }
 
-    public func setSplitApps(_ apps: Set<String>) async {
-        preferences.splitApps = apps
+    public func setSplitRules(_ rules: [SplitRule]) async {
+        preferences.splitRules = rules
         await reapplyRouting()
     }
 
     public var splitMode: SplitMode { preferences.splitMode }
-    public var splitApps: Set<String> { preferences.splitApps }
+    public var splitRules: [SplitRule] { preferences.splitRules }
 
     private func reapplyRouting() async {
         guard state.isConnected else { return }
@@ -473,8 +481,14 @@ public final class TunnelController: ObservableObject {
             // Per-process rules need an interface to route; in system-proxy mode
             // mihomo never sees the process, so the screen is honest about being
             // inert rather than silently doing nothing.
-            splitMode: mode == .tun ? preferences.splitMode : .all,
-            splitProcesses: mode == .tun ? Array(preferences.splitApps).sorted() : [],
+            splitMode: preferences.splitMode,
+            // Process rules need an interface to route: under a system proxy the
+            // core never sees the process, so they would be written and silently
+            // never match. Domain and address rules work in both modes, so only
+            // the process ones are dropped.
+            splitRules: mode == .tun
+                ? preferences.splitRules
+                : preferences.splitRules.filter { !$0.kind.needsProcessMatching },
             dataDirectory: support.appendingPathComponent("core").path
         )
     }

@@ -42,12 +42,19 @@ func coreIntegrationTests() {
     let secret = "test-secret"
     let process = MihomoProcess(binary: core, dataDirectory: workspace)
 
-    func overrides(_ mode: TunnelMode, _ split: SplitMode, _ processes: [String]) -> MihomoConfig.Overrides {
+    func overrides(_ mode: TunnelMode, _ split: SplitMode, _ rules: [SplitRule]) -> MihomoConfig.Overrides {
         MihomoConfig.Overrides(
             controllerPort: controllerPort, secret: secret, mixedPort: 17_897,
-            mode: mode, splitMode: split, splitProcesses: processes,
+            mode: mode, splitMode: split, splitRules: rules,
             dataDirectory: workspace.path
         )
+    }
+
+    // One of every kind the UI offers, so the core is the thing that says
+    // whether the grammar is right — in both rule positions, since `except`
+    // writes plain rules and `only` writes SUB-RULE matchers.
+    let everyKind = SplitRule.Kind.allCases.map {
+        SplitRule(kind: $0, value: $0.placeholder)
     }
 
     Check.suite("Core · every generated config loads") {
@@ -56,8 +63,9 @@ func coreIntegrationTests() {
         let shapes: [(String, MihomoConfig.Overrides)] = [
             ("system proxy", overrides(.systemProxy, .all, [])),
             ("tun", overrides(.tun, .all, [])),
-            ("tun + only", overrides(.tun, .only, ["Telegram", "Google Chrome"])),
-            ("tun + except", overrides(.tun, .except, ["Bank", "Steam"])),
+            ("tun + only", overrides(.tun, .only, everyKind)),
+            ("tun + except", overrides(.tun, .except, everyKind)),
+            ("proxy + except", overrides(.systemProxy, .except, everyKind)),
         ]
         for (name, override) in shapes {
             let path = workspace.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "-")).yaml")

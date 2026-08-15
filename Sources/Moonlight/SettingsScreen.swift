@@ -180,15 +180,6 @@ struct SettingsScreen: View {
 
     private var appSection: some View {
         RowGroup {
-            ActionRow(
-                icon: .layers,
-                fill: palette.cat2,
-                title: L.t(.splitTunnelling, locale),
-                subtitle: splitSummary
-            ) {
-                page = .apps
-            }
-            RowDivider(leading: 74)
             HStack(spacing: 14) {
                 Text(L.t(.language, locale))
                     .font(.ml(14.5, .bold))
@@ -210,15 +201,6 @@ struct SettingsScreen: View {
                 isOn: $settings.notifications
             )
         }
-    }
-
-    private var splitSummary: String {
-        guard tunnel.splitMode != .all else { return L.t(.splitSummaryAll, locale) }
-        let count = tunnel.splitApps.count
-        let which = tunnel.splitMode == .only
-            ? L.t(.splitOnly, locale).lowercased()
-            : L.t(.splitExcept, locale).lowercased()
-        return "\(count) \(L.t(.splitSummaryCount, locale)) · \(which)"
     }
 
     // MARK: - Support

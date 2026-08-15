@@ -56,7 +56,7 @@ public enum L {
         case splitAll, splitOnly, splitExcept
         case splitHintAll, splitHintOnly, splitHintExcept
         case splitNeedsTun, splitNeedsTunAction, splitSummaryAll, splitSummaryCount
-        case searchApps, runningNow
+        case searchApps, runningNow, installedApps, noApps, rules, rulesHelp
 
         // Settings
         case sectionSystem, sectionApp, sectionSupport, sectionTunnel
@@ -80,7 +80,7 @@ public enum L {
             case .titleConnect: return "Подключение"
             case .subtitleConnect: return "Выберите узел и включите туннель"
             case .titleSubscription: return "Подписка"
-            case .subtitleSubscription: return "Тариф, трафик и устройства"
+            case .subtitleSubscription: return "Тариф и трафик"
             case .titleApps: return "Приложения"
             case .subtitleApps: return "Какой трафик идёт через туннель"
             case .titleSettings: return "Настройки"
@@ -164,12 +164,16 @@ public enum L {
             case .splitHintOnly: return "Через туннель пойдут только отмеченные программы — остальные напрямую."
             case .splitHintExcept: return "Отмеченные программы пойдут напрямую, весь остальной трафик — через туннель."
             case .splitNeedsTun:
-                return "Правила по программам работают только в режиме TUN: системный прокси не показывает ядру, какая программа открыла соединение."
+                return "Правила PROCESS-* не работают: системный прокси не показывает ядру, какая программа открыла соединение. Остальные правила действуют."
             case .splitNeedsTunAction: return "Включить TUN"
             case .splitSummaryAll: return "Весь трафик"
             case .splitSummaryCount: return "прогр."
             case .searchApps: return "Поиск"
             case .runningNow: return "Запущено"
+            case .installedApps: return "ПРОГРАММЫ"
+            case .noApps: return "Ничего не найдено"
+            case .rules: return "ПРАВИЛА"
+            case .rulesHelp: return "Правила по доменам, адресам и портам работают в обоих режимах. PROCESS-* требуют TUN."
 
             case .sectionSystem: return "СИСТЕМА"
             case .sectionApp: return "ПРИЛОЖЕНИЕ"
@@ -217,7 +221,7 @@ public enum L {
             case .titleConnect: return "Connection"
             case .subtitleConnect: return "Pick a node and switch the tunnel on"
             case .titleSubscription: return "Subscription"
-            case .subtitleSubscription: return "Plan, traffic and devices"
+            case .subtitleSubscription: return "Plan and traffic"
             case .titleApps: return "Apps"
             case .subtitleApps: return "Which traffic goes through the tunnel"
             case .titleSettings: return "Settings"
@@ -301,12 +305,16 @@ public enum L {
             case .splitHintOnly: return "Only the selected apps go through the tunnel — everything else goes direct."
             case .splitHintExcept: return "The selected apps go direct; all other traffic goes through the tunnel."
             case .splitNeedsTun:
-                return "Per-app rules only work in TUN mode: a system proxy never tells the core which app opened a connection."
+                return "PROCESS-* rules do not match: a system proxy never tells the core which app opened a connection. The other rules still apply."
             case .splitNeedsTunAction: return "Switch to TUN"
             case .splitSummaryAll: return "All traffic"
             case .splitSummaryCount: return "apps"
             case .searchApps: return "Search"
             case .runningNow: return "Running"
+            case .installedApps: return "APPS"
+            case .noApps: return "Nothing found"
+            case .rules: return "RULES"
+            case .rulesHelp: return "Domain, address and port rules work in both modes. PROCESS-* rules need TUN."
 
             case .sectionSystem: return "SYSTEM"
             case .sectionApp: return "APP"
