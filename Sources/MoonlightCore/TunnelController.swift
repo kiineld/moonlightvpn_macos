@@ -25,6 +25,13 @@ public final class TunnelController: ObservableObject {
     @Published public private(set) var rateDown: Int64 = 0
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var isPinging = false
+    /// Nodes whose probe has not come back yet in the current pass.
+    ///
+    /// Per node, not one flag for the whole pass: a single flag made every row
+    /// show `…` until the slowest node timed out, which hid the results that had
+    /// already arrived and made an otherwise streaming measurement look like it
+    /// took as long as its worst entry.
+    @Published public private(set) var pendingProbes: Set<String> = []
     @Published public private(set) var lastError: String?
     @Published public private(set) var lastRefresh: Date?
 
@@ -496,9 +503,10 @@ public final class TunnelController: ObservableObject {
         if nodes.isEmpty { try? await discoverSelector() }
         guard !nodes.isEmpty else { return }
 
-        // Clear first, so a node that has since gone down does not keep showing
-        // the number it managed last time while the pass is still running.
-        for index in nodes.indices { nodes[index].latency = nil }
+        // Existing numbers stay on screen until their replacement lands, so the
+        // list does not flash to n/a on every pass.
+        pendingProbes = Set(nodes.map(\.name))
+        defer { pendingProbes = [] }
 
         let measured = await api.delays(nodes: nodes.map(\.name)) { name, delay in
             await Self.record(name: name, delay: delay, on: self)
@@ -509,6 +517,7 @@ public final class TunnelController: ObservableObject {
 
     /// Applies one node's result as it lands, on the main actor.
     private static func record(name: String, delay: Int?, on controller: TunnelController) async {
+        controller.pendingProbes.remove(name)
         guard let index = controller.nodes.firstIndex(where: { $0.name == name }) else { return }
         controller.nodes[index].latency = delay
     }

@@ -147,7 +147,7 @@ public actor MihomoAPI {
     public func delay(
         node: String,
         url: String = MihomoAPI.probeURL,
-        timeout: Int = 5000
+        timeout: Int = 3000
     ) async -> Int? {
         var components = URLComponents(string: base.absoluteString + "/proxies/\(escape(node))/delay")
         components?.queryItems = [
@@ -173,7 +173,10 @@ public actor MihomoAPI {
     /// connection through that node's own outbound — so a full pass costs about
     /// as long as its slowest node rather than the sum. Concurrency is still
     /// capped, because a subscription with sixty nodes would otherwise open
-    /// sixty TLS handshakes at once and measure congestion instead of latency.
+    /// sixty handshakes at once and measure congestion instead of latency.
+    ///
+    /// The cap is wide enough that a dead node, which holds its slot for the
+    /// full timeout, does not stall the live ones behind it.
     /// `onResult` fires as each node answers, not at the end of the pass.
     ///
     /// A pass over twenty nodes takes several seconds no matter how it is
@@ -184,7 +187,7 @@ public actor MihomoAPI {
     @discardableResult
     public func delays(
         nodes: [String],
-        concurrency: Int = 8,
+        concurrency: Int = 16,
         onResult: (@Sendable (String, Int?) async -> Void)? = nil
     ) async -> [String: Int] {
         var results: [String: Int] = [:]

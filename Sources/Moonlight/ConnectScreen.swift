@@ -146,7 +146,7 @@ struct ConnectScreen: View {
                                 NodeRow(
                                     node: node,
                                     selected: !tunnel.autoSelect && node.name == tunnel.selectedNode,
-                                    measuring: tunnel.isPinging
+                                    measuring: tunnel.pendingProbes.contains(node.name)
                                 ) {
                                     Task { await tunnel.select(node: node.name) }
                                 }

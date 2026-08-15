@@ -99,7 +99,7 @@ public enum L {
             case .connecting: return "Подключение"
             case .disconnecting: return "Отключение"
             case .bigConnect: return "Подключить"
-            case .bigConnected: return "Соединение"
+            case .bigConnected: return "Подключено"
             case .hintConnect: return "нажмите, чтобы подключиться"
             case .hintDisconnect: return "нажмите, чтобы отключить"
             case .downloaded: return "СКАЧАНО"
