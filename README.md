@@ -273,7 +273,7 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-175 checks. A plain executable rather than XCTest, because XCTest ships with
+180 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`
@@ -311,13 +311,30 @@ panel operator runs, and self-hosted panels are routinely reached by bare IP wit
 a self-signed certificate. The client upgrades a bare host to `https://`, so
 cleartext only happens when the user types `http://` themselves.
 
+### When TUN cannot start
+
+`auto-route` installs routes covering the internet, and another VPN client
+holding them makes the core log
+
+```
+Start TUN listening error: configure tun interface: add route: 1.0.0.0/8: file exists
+```
+
+and then **keep running**. It answers its API normally with no interface
+established, so every other signal says "connected" while nothing is routed.
+`connect()` therefore checks the log for that line before reporting success, and
+names the cause rather than quoting the core at the user. The TUN block also
+leaves the device name to the core, because a hardcoded `utun7` collides with
+whichever client already holds it.
+
 ## Known limitations
 
-- **Not verified against a live panel.** The app builds, the tests pass, and the
-  core starts and answers its API with a real config — but a tunnel carrying
-  traffic to a real node has not been exercised. That needs a live subscription.
-  The end-to-end path was driven against a local stand-in panel serving a
-  Remnawave-shaped response.
+- **A tunnel carrying traffic has not been confirmed.** Against a live
+  Remnawave panel the subscription is fetched, the config is built and the core
+  loads it with the panel's own geosite rules intact — that much is observed
+  from a real run. TUN then failed on that machine because another VPN client
+  already held the routes, which is what the check below now reports. The
+  remaining step, packets flowing to a node, is unverified.
 - **Sidebar hover in light mode is unverified.** It was a white wash on a
   near-white sidebar; it is now an accent tint with accent-ink text and a
   hairline. Synthetic pointer events do not reach SwiftUI's tracking areas, so

@@ -207,6 +207,18 @@ public final class TunnelController: ObservableObject {
                 throw MihomoProcess.Failure.exited(0, coreLog)
             }
 
+            // A TUN interface that fails to come up does not stop the core: it
+            // keeps running and keeps answering its API, so without this check
+            // the app reports a healthy tunnel while nothing is routed through
+            // it. The interface is established shortly after the API binds, so
+            // the log is given a moment to catch up.
+            if mode == .tun {
+                try await Task.sleep(nanoseconds: 700_000_000)
+                if let reason = MihomoProcess.tunFailure(in: coreLog) {
+                    throw MihomoProcess.Failure.exited(0, reason)
+                }
+            }
+
             // The selector has to exist before a node can be picked, and picking
             // has to happen before traffic is let in — otherwise the first
             // seconds go through whatever node the config happened to list first.

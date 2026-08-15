@@ -235,8 +235,9 @@ public struct MihomoConfig {
     public static func tunBlock() -> [String: Any] {
         [
             "enable": true,
-            // macOS can only use interface names starting with `utun`.
-            "device": "utun\(7)",
+            // No `device`: macOS requires a `utun` name, and a hardcoded one
+            // collides with whichever VPN client already holds it. Letting the
+            // core pick the first free index is the only way to be sure.
             // `mixed` is the recommended stack: gvisor's userspace TCP with the
             // system stack's UDP, which avoids gvisor's UDP throughput cost.
             "stack": "mixed",

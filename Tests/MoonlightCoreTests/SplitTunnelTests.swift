@@ -114,3 +114,36 @@ func splitTunnelTests() {
                     "spaces in a process name are fine")
     }
 }
+
+
+/// A TUN interface that fails to come up does not stop the core, so nothing else
+/// in the system reports it. These pin the one signal that does.
+///
+/// The sample lines are taken verbatim from a real failure: a machine with
+/// another VPN client already holding the routes `auto-route` wanted.
+func tunFailureTests() {
+    Check.suite("TUN failure detection") {
+        let conflict = """
+        time="..." level=info msg="Initial configuration complete, total time: 2994ms"
+        time="..." level=warning msg="[TUN] default interface changed by monitor, => en0"
+        time="..." level=error msg="Start TUN listening error: configure tun interface: add route: 1.0.0.0/8: file exists"
+        """
+        let reason = MihomoProcess.tunFailure(in: conflict)
+        Check.notNil(reason, "a route conflict is detected")
+        Check.isTrue(reason?.contains("Another VPN") == true,
+                     "a route conflict names the cause rather than quoting the core")
+
+        let other = #"""
+        time="..." level=error msg="Start TUN listening error: operation not permitted"
+        """#
+        Check.equal(MihomoProcess.tunFailure(in: other), "operation not permitted",
+                    "any other reason is passed through as the core stated it")
+
+        let healthy = """
+        time="..." level=info msg="Initial configuration complete, total time: 120ms"
+        time="..." level=info msg="[TUN] Tun adapter listening at: utun5"
+        """
+        Check.isNil(MihomoProcess.tunFailure(in: healthy), "a healthy start reports nothing")
+        Check.isNil(MihomoProcess.tunFailure(in: ""), "an empty log reports nothing")
+    }
+}

@@ -107,8 +107,9 @@ func configTests() {
         let root = load(built)
         let tun = root["tun"] as? [String: Any]
         Check.equal(tun?["enable"] as? Bool, true, "tun enabled")
-        // macOS can only use interface names starting with utun.
-        Check.equal((tun?["device"] as? String)?.hasPrefix("utun"), true, "utun device name")
+        // No device name: a hardcoded utun index collides with whichever VPN
+        // client already holds it, so the core picks the first free one.
+        Check.isNil(tun?["device"], "the core chooses the interface name")
         Check.equal(tun?["stack"] as? String, "mixed", "mixed stack")
         Check.equal(tun?["auto-route"] as? Bool, true, "auto-route")
         Check.notNil(tun?["dns-hijack"], "dns-hijack is set")

@@ -52,6 +52,34 @@ public final class MihomoProcess: @unchecked Sendable {
         return process?.isRunning ?? false
     }
 
+    /// The reason TUN failed to come up, if it did.
+    ///
+    /// This has to be asked for explicitly, because the failure is **not** a
+    /// crash: the core keeps running and keeps answering its API with the
+    /// interface never established, so every other signal says "connected"
+    /// while no traffic moves.
+    public static func tunFailure(in log: String) -> String? {
+        guard let line = log
+            .split(whereSeparator: \.isNewline)
+            .last(where: { $0.contains("Start TUN listening error") })
+        else { return nil }
+
+        // `add route: …: file exists` means another VPN client already owns the
+        // routes auto-route wants. That is the common case by far, and the raw
+        // message sends people looking for a bug in this app.
+        if line.contains("file exists") || line.contains("add route") {
+            return "Another VPN or proxy client already owns the system routes. "
+                + "Quit it and connect again, or use system-proxy mode."
+        }
+        if let range = line.range(of: "Start TUN listening error: ") {
+            // The core logs `msg="…"`, so the closing quote comes along with the
+            // reason and would be shown to the user.
+            return String(line[range.upperBound...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+        }
+        return "The TUN interface could not be created"
+    }
+
     public var recentLog: String {
         lock.lock(); defer { lock.unlock() }
         return logLines.joined(separator: "\n")

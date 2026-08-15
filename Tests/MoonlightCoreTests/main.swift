@@ -7,6 +7,7 @@ subscriptionInfoTests()
 shareLinkTests()
 configTests()
 splitTunnelTests()
+tunFailureTests()
 coreIntegrationTests()
 
 Check.report()
