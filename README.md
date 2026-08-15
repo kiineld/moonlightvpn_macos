@@ -342,8 +342,9 @@ fork points these at its own endpoints without touching source:
 | `MLSupportURL` | `SUPPORT_URL` | Settings → Support |
 | `MLReleasesURL` | `RELEASES_URL` | "Check for updates" |
 
-In CI these come from repository **variables** of the same name. They default to
-`https://t.me/`; point them at real endpoints before shipping.
+In CI these come from repository **variables** of the same name, which are set on
+this repository. The source defaults match them, so a local build reaches the
+same places.
 
 `NSAllowsArbitraryLoads` is set. A subscription URL points at whatever host the
 panel operator runs, and self-hosted panels are routinely reached by bare IP with

@@ -147,3 +147,37 @@ func tunFailureTests() {
         Check.isNil(MihomoProcess.tunFailure(in: ""), "an empty log reports nothing")
     }
 }
+
+/// The server list is the panel's own list, so a row has to read the way the
+/// panel writes it — flag, country, transport — whether the entry is a node or
+/// one of the operator's balancer groups.
+func nodePresentationTests() {
+    Check.suite("Node · flag and country") {
+        let sweden = Node(name: "🇸🇪 Sweden", type: "Vless", protocolLabel: "VLESS Reality")
+        Check.equal(sweden.flag, "🇸🇪", "the flag is split off the name")
+        Check.equal(sweden.title, "Sweden", "the title has the flag removed")
+        // The ISO code falls out of the regional indicators, so Foundation can
+        // localise the name and there is no table to keep up to date.
+        Check.equal(sweden.country(.ru), "Швеция", "the country is localised from the flag")
+        Check.equal(sweden.country(.en), "Sweden", "…in either language")
+        Check.equal(sweden.subtitle(.ru), "Швеция · VLESS Reality", "the row's second line")
+
+        // A balancer named for a country is that country to the user.
+        let balancer = Node(name: "🇩🇪 Russia -> Germany ⚡️", type: "LoadBalance",
+                            isGroup: true, protocolLabel: "VLESS Reality")
+        Check.equal(balancer.flag, "🇩🇪", "a group keeps the flag its name carries")
+        Check.equal(balancer.title, "Russia -> Germany ⚡️", "and its full name")
+        Check.equal(balancer.subtitle(.ru), "Германия · VLESS Reality",
+                    "a group reads exactly like a node")
+
+        // An auto-picker spans several places, so it claims none.
+        let auto = Node(name: "Auto ⚡", type: "URLTest", isGroup: true,
+                        protocolLabel: "VLESS Reality")
+        Check.isNil(auto.flag, "no flag is invented for a cross-country group")
+        Check.isNil(auto.country(.ru), "and no country either")
+        Check.equal(auto.subtitle(.ru), "VLESS Reality", "it shows just its transport")
+
+        let bare = Node(name: "Node", type: "Vless")
+        Check.equal(bare.subtitle(.ru), "", "nothing known means nothing shown")
+    }
+}

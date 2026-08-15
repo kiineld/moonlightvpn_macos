@@ -20,8 +20,9 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
 
     public init(
         name: String, type: String, server: String? = nil,
-        latency: Int? = nil, isGroup: Bool = false
+        latency: Int? = nil, isGroup: Bool = false, protocolLabel: String? = nil
     ) {
+        self.protocolLabel = protocolLabel
         self.name = name
         self.type = type
         self.server = server
@@ -29,19 +30,56 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
         self.isGroup = isGroup
     }
 
+    /// How the panel writes this node's transport — "VLESS Reality",
+    /// "Hysteria2 TLS". Read from the subscription rather than from the API,
+    /// which reports only the bare type.
+    public var protocolLabel: String?
+
+    private static let regionalIndicators = UInt32(0x1F1E6)...UInt32(0x1F1FF)
+
+    private var flagScalars: [Unicode.Scalar] {
+        Array(name.unicodeScalars.prefix { Self.regionalIndicators.contains($0.value) })
+    }
+
     /// The flag emoji a panel conventionally prefixes to a node name, split off
     /// so the design's separate flag column can render it.
-    public var flag: String {
-        let scalars = name.unicodeScalars.prefix { $0.properties.isEmojiPresentation || (0x1F1E6...0x1F1FF).contains($0.value) }
-        let flag = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespaces)
-        return flag.isEmpty ? "🌐" : flag
+    ///
+    /// Nil for an entry with no flag — a cross-country balancer or an
+    /// auto-picker — so the row can show a mark instead of an invented one.
+    public var flag: String? {
+        let scalars = flagScalars
+        guard scalars.count == 2 else { return nil }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    /// The country the flag stands for, in the app's language.
+    ///
+    /// A flag emoji is two regional indicators, which are just `A`–`Z` shifted
+    /// into their own block — so the ISO code falls straight out of it and
+    /// Foundation localises the name. No table to keep up to date.
+    public func country(_ locale: AppLocale) -> String? {
+        let scalars = flagScalars
+        guard scalars.count == 2 else { return nil }
+        let code = String(scalars.map {
+            Character(Unicode.Scalar($0.value - Self.regionalIndicators.lowerBound + 65)!)
+        })
+        return Locale(identifier: locale == .ru ? "ru_RU" : "en_US")
+            .localizedString(forRegionCode: code)
     }
 
     /// The node name with the leading flag removed.
     public var title: String {
-        let stripped = name.unicodeScalars.drop { $0.properties.isEmojiPresentation || (0x1F1E6...0x1F1FF).contains($0.value) }
+        let stripped = name.unicodeScalars.drop { Self.regionalIndicators.contains($0.value) }
         let title = String(String.UnicodeScalarView(stripped)).trimmingCharacters(in: .whitespaces)
         return title.isEmpty ? name : title
+    }
+
+    /// "Швеция · VLESS Reality" — the row's second line. Whatever is known,
+    /// joined; a group with no flag simply shows its transport.
+    public func subtitle(_ locale: AppLocale) -> String {
+        [country(locale), protocolLabel]
+            .compactMap { $0 }
+            .joined(separator: " · ")
     }
 }
 

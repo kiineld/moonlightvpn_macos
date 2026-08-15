@@ -325,24 +325,27 @@ private struct NodeRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                // A group the panel built — a balancer or an auto-picker — gets
-                // the accent bolt rather than a flag: it is not one place.
-                if node.isGroup {
+                // A balancer named for a country is still that country as far as
+                // the user is concerned, so it gets the flag its name carries.
+                // The accent mark is only for entries with no flag at all — an
+                // auto-picker spanning several places.
+                if let flag = node.flag {
+                    Text(flag).font(.system(size: 20))
+                } else {
                     IconView(.zap, size: 16, strokeWidth: 2.2)
                         .foregroundStyle(palette.accentInk)
                         .frame(width: 24)
-                } else {
-                    Text(node.flag).font(.system(size: 20))
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(node.title)
                         .font(.ml(14, .bold))
                         .foregroundStyle(palette.text)
                         .lineLimit(1)
-                    Text(node.isGroup ? L.t(.smartGroup, locale) : node.type.uppercased())
+                    Text(node.subtitle(locale))
                         .font(.ml(12))
-                        .foregroundStyle(node.isGroup ? palette.accentInk : palette.textMuted)
+                        .foregroundStyle(palette.textMuted)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 5) {

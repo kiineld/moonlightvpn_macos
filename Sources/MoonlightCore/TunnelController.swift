@@ -384,6 +384,37 @@ public final class TunnelController: ObservableObject {
         return measured.min(by: { $0.0 < $1.0 })?.1 ?? nodes.first?.name
     }
 
+    /// How each node's transport reads, taken from the subscription.
+    ///
+    /// The RESTful API reports a bare type — `Vless`, `Hysteria2` — but the
+    /// panel's own list distinguishes Reality from plain TLS, and that is the
+    /// difference a user picks on. Only the config has it.
+    private func protocolLabels() -> [String: String] {
+        guard let yaml = try? loadPanelYAML(),
+              let root = try? Yams.load(yaml: yaml) as? [String: Any],
+              let proxies = root["proxies"] as? [[String: Any]] else { return [:] }
+
+        var labels: [String: String] = [:]
+        for proxy in proxies {
+            guard let name = proxy["name"] as? String,
+                  let type = (proxy["type"] as? String)?.lowercased() else { continue }
+            switch type {
+            case "vless", "vmess":
+                let family = type == "vless" ? "VLESS" : "VMess"
+                if proxy["reality-opts"] != nil { labels[name] = "\(family) Reality" }
+                else if proxy["tls"] as? Bool == true { labels[name] = "\(family) TLS" }
+                else { labels[name] = family }
+            case "hysteria2":
+                // hysteria2 is TLS by definition; the panel writes it out anyway.
+                labels[name] = "Hysteria2 TLS"
+            case "trojan": labels[name] = "Trojan"
+            case "ss": labels[name] = "Shadowsocks"
+            default: labels[name] = type.uppercased()
+            }
+        }
+        return labels
+    }
+
     private func discoverSelector() async throws {
         let groups = try await api.groups()
         let selectors = groups.filter { $0.type == "Selector" }
@@ -406,7 +437,20 @@ public final class TunnelController: ObservableObject {
         guard let selectorGroup else {
             throw MihomoConfig.Failure.noProxies
         }
-        nodes = try await api.nodes(in: selectorGroup)
+        var listed = try await api.nodes(in: selectorGroup)
+
+        // A group has no transport of its own, so it borrows the one its members
+        // share — which is what the panel's own list shows for it.
+        let labels = protocolLabels()
+        let membership = Dictionary(groups.map { ($0.name, $0.options) }) { first, _ in first }
+        for index in listed.indices {
+            if let label = labels[listed[index].name] {
+                listed[index].protocolLabel = label
+            } else if let members = membership[listed[index].name] {
+                listed[index].protocolLabel = members.lazy.compactMap { labels[$0] }.first
+            }
+        }
+        nodes = listed
         restoreLatencies()
     }
 

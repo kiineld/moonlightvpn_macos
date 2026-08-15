@@ -20,9 +20,9 @@ CONTENTS="$APP/Contents"
 
 # Deployment endpoints. Overridden by the environment so a fork points these at
 # its own bot and channel without touching source.
-TELEGRAM_BOT_URL="${TELEGRAM_BOT_URL:-https://t.me/}"
-TELEGRAM_CHANNEL_URL="${TELEGRAM_CHANNEL_URL:-https://t.me/}"
-SUPPORT_URL="${SUPPORT_URL:-https://t.me/}"
+TELEGRAM_BOT_URL="${TELEGRAM_BOT_URL:-https://t.me/the_moonlight_vpn_bot}"
+TELEGRAM_CHANNEL_URL="${TELEGRAM_CHANNEL_URL:-https://t.me/moonlight_vpn_channel}"
+SUPPORT_URL="${SUPPORT_URL:-https://t.me/moonlight_vps}"
 RELEASES_URL="${RELEASES_URL:-https://github.com/kiineld/moonlightvpn_macos/releases/latest}"
 
 scripts/fetch-mihomo.sh

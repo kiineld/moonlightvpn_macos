@@ -8,6 +8,7 @@ shareLinkTests()
 configTests()
 splitTunnelTests()
 tunFailureTests()
+nodePresentationTests()
 coreIntegrationTests()
 
 Check.report()

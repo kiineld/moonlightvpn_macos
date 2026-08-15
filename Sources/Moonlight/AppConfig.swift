@@ -7,9 +7,9 @@ import MoonlightCore
 /// own bot and channel by editing `scripts/build-app.sh` — no source change and
 /// no rebuild of the Swift.
 public enum AppConfig {
-    public static var telegramBotURL: URL { url("MLTelegramBotURL", "https://t.me/") }
-    public static var telegramChannelURL: URL { url("MLTelegramChannelURL", "https://t.me/") }
-    public static var supportURL: URL { url("MLSupportURL", "https://t.me/") }
+    public static var telegramBotURL: URL { url("MLTelegramBotURL", "https://t.me/the_moonlight_vpn_bot") }
+    public static var telegramChannelURL: URL { url("MLTelegramChannelURL", "https://t.me/moonlight_vpn_channel") }
+    public static var supportURL: URL { url("MLSupportURL", "https://t.me/moonlight_vps") }
     public static var releasesURL: URL {
         url("MLReleasesURL", "https://github.com/kiineld/moonlightvpn_macos/releases/latest")
     }
