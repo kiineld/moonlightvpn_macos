@@ -294,6 +294,7 @@ private struct RulesPanel: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .pointerCursor()
 
                 if kind.needsProcessMatching {
                     Text("TUN")
@@ -387,6 +388,7 @@ private struct RuleRow: View {
                     .foregroundStyle(hovering ? palette.danger : palette.textMuted)
             }
             .buttonStyle(.plain)
+            .pointerCursor()
 
             MLToggle(isOn: $isOn)
         }

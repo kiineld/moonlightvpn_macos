@@ -240,6 +240,86 @@ public actor MihomoAPI {
         }
     }
 
+    public struct LogLine: Sendable {
+        public var type: String
+        public var payload: String
+    }
+
+    /// The core's own log, as it writes it.
+    public nonisolated func logStream(level: String = "info") -> AsyncStream<LogLine> {
+        lineStream(path: "/logs?level=\(level)") { object in
+            guard let payload = object["payload"] as? String else { return nil }
+            return LogLine(type: object["type"] as? String ?? "info", payload: payload)
+        }
+    }
+
+    // MARK: - Connections
+
+    public struct Connection: Identifiable, Sendable {
+        public var id: String
+        /// The proxy chain the core picked, outermost last — the group that
+        /// chose, then what it chose. The UI shows the node that carried it.
+        public var chains: [String]
+        public var rule: String
+        public var rulePayload: String
+        public var network: String
+        public var host: String
+        public var process: String
+        public var processPath: String
+        public var upload: Int64
+        public var download: Int64
+        public var start: Date
+
+        /// The node that actually carried the connection: the innermost link.
+        public var node: String { chains.first ?? "" }
+    }
+
+    public func connections() async throws -> [Connection] {
+        guard let object = try await get("/connections") as? [String: Any],
+              let list = object["connections"] as? [[String: Any]] else { return [] }
+
+        let formatter = ISO8601DateFormatter.remnawave
+        return list.compactMap { entry in
+            guard let id = entry["id"] as? String else { return nil }
+            let meta = entry["metadata"] as? [String: Any] ?? [:]
+
+            // `host` is empty for a connection opened straight to an address, in
+            // which case the destination IP is the only name there is.
+            let host = (meta["host"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? (meta["destinationIP"] as? String) ?? "—"
+            let port = (meta["destinationPort"] as? String)
+                ?? (meta["destinationPort"] as? NSNumber)?.stringValue
+
+            let path = meta["processPath"] as? String ?? ""
+            let process = (meta["process"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? (path.isEmpty ? "—" : (path as NSString).lastPathComponent)
+
+            return Connection(
+                id: id,
+                chains: entry["chains"] as? [String] ?? [],
+                rule: entry["rule"] as? String ?? "",
+                rulePayload: entry["rulePayload"] as? String ?? "",
+                network: (meta["network"] as? String ?? "tcp").uppercased(),
+                host: port.map { "\(host):\($0)" } ?? host,
+                process: process,
+                processPath: path,
+                upload: (entry["upload"] as? NSNumber)?.int64Value ?? 0,
+                download: (entry["download"] as? NSNumber)?.int64Value ?? 0,
+                start: (entry["start"] as? String).flatMap { formatter.date(from: $0) } ?? Date()
+            )
+        }
+    }
+
+    /// Closes every open connection. The core reopens what is still wanted, so
+    /// this is how a user forces traffic onto a node they just switched to.
+    public func closeAllConnections() async throws {
+        _ = try await request("DELETE", "/connections", body: nil)
+    }
+
+    public func close(connection id: String) async throws {
+        _ = try await request("DELETE", "/connections/\(id)", body: nil)
+    }
+
     /// Total bytes transferred by the current core process.
     public func totals() async throws -> Traffic {
         guard let object = try await get("/connections") as? [String: Any] else {
@@ -257,7 +337,14 @@ public actor MihomoAPI {
     ) -> AsyncStream<T> {
         AsyncStream { continuation in
             let task = Task {
-                var request = URLRequest(url: base.appendingPathComponent(path))
+                // Concatenated, not `appendingPathComponent`: that escapes the
+                // `?` of a query string into `%3F`, so `/logs?level=info` asks
+                // for a path called "logs?level=info" and the stream never opens.
+                guard let url = URL(string: base.absoluteString + path) else {
+                    continuation.finish()
+                    return
+                }
+                var request = URLRequest(url: url)
                 request.timeoutInterval = .infinity
                 request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
                 do {

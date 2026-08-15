@@ -3,7 +3,7 @@ import MoonlightDesign
 import MoonlightCore
 
 enum Page: Hashable {
-    case connect, subscription, apps, settings, importSubscription
+    case connect, subscription, apps, settings, importSubscription, logs, connections
 }
 
 struct RootView: View {
@@ -14,7 +14,7 @@ struct RootView: View {
     /// permission, and is inert when unset.
     /// Where AppKit put the traffic lights, measured rather than assumed.
     @State private var titleBarCentre: CGFloat = 14
-    @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "apps": return .apps; case "settings": return .settings; case "import": return .importSubscription; default: return .connect } }()
+    @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "apps": return .apps; case "settings": return .settings; case "import": return .importSubscription; case "logs": return .logs; case "connections": return .connections; default: return .connect } }()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +51,8 @@ struct RootView: View {
             case .apps: AppsScreen(page: $page)
             case .settings: SettingsScreen(page: $page)
             case .importSubscription: ImportScreen(page: $page)
+            case .logs: LogsScreen(page: $page)
+            case .connections: ConnectionsScreen(page: $page)
             }
         }
         .padding(.horizontal, 24)
@@ -152,6 +154,8 @@ private struct Sidebar: View {
             }
             NavItem(icon: .layers, title: L.t(.navApps, locale),
                     active: page == .apps) { page = .apps }
+            NavItem(icon: .activity, title: L.t(.navConnections, locale),
+                    active: page == .connections) { page = .connections }
             NavItem(icon: .settings, title: L.t(.navSettings, locale),
                     active: page == .settings) { page = .settings }
 
@@ -347,6 +351,8 @@ private struct Header: View {
         case .apps: return .titleApps
         case .settings: return .titleSettings
         case .importSubscription: return .titleImport
+        case .logs: return .titleLogs
+        case .connections: return .titleConnections
         }
     }
 
@@ -357,6 +363,8 @@ private struct Header: View {
         case .apps: return .subtitleApps
         case .settings: return .subtitleSettings
         case .importSubscription: return .subtitleImport
+        case .logs: return .subtitleLogs
+        case .connections: return .subtitleConnections
         }
     }
 }

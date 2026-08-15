@@ -201,3 +201,28 @@ func autoPickerTests() {
                      "the entry has to be a group")
     }
 }
+
+/// Version comparison decides whether the app offers to replace itself, so the
+/// case a string comparison gets backwards is worth pinning.
+func updaterTests() {
+    Check.suite("Updater · version ordering") {
+        Check.isTrue(Updater.isNewer("1.0.9", than: "1.0.8"), "a later patch is newer")
+        // "1.0.10" < "1.0.9" as strings; numerically it is not.
+        Check.isTrue(Updater.isNewer("1.0.10", than: "1.0.9"), "ten beats nine")
+        Check.isTrue(Updater.isNewer("1.1.0", than: "1.0.99"), "a later minor beats any patch")
+        Check.isTrue(Updater.isNewer("2.0", than: "1.9.9"), "a shorter version still compares")
+        Check.isTrue(!Updater.isNewer("1.0.8", than: "1.0.8"), "the same version is not newer")
+        Check.isTrue(!Updater.isNewer("1.0.7", than: "1.0.8"), "an older one is not newer")
+        Check.isTrue(!Updater.isNewer("1.0", than: "1.0.0"), "trailing zeros are equal")
+    }
+
+    Check.suite("LogEntry · core levels") {
+        // mihomo writes `warning`; its own docs and most UIs say `warn`.
+        Check.equal(LogEntry.Level(core: "warn"), .warning, "warn maps to warning")
+        Check.equal(LogEntry.Level(core: "warning"), .warning, "and so does warning")
+        Check.equal(LogEntry.Level(core: "err"), .error, "err maps to error")
+        Check.equal(LogEntry.Level(core: "ERROR"), .error, "case does not matter")
+        Check.equal(LogEntry.Level(core: "debug"), .debug, "debug")
+        Check.equal(LogEntry.Level(core: "something else"), .info, "anything unknown is info")
+    }
+}

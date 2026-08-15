@@ -10,6 +10,7 @@ splitTunnelTests()
 tunFailureTests()
 nodePresentationTests()
 autoPickerTests()
+updaterTests()
 coreIntegrationTests()
 
 Check.report()

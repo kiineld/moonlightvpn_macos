@@ -117,6 +117,48 @@ waiting to happen, so it is deliberately narrow:
   already run `sudo`. This spares the user a password prompt per connect; it is
   not a boundary against an administrator.
 
+## Logs and connections
+
+Two screens over the core's own streams.
+
+**Logs** merges the core's `/logs` with the app's own narration on one timeline,
+and that pairing is the point: read apart, a failed connect is a core error with
+no cause; together it is "the app switched to TUN, then the core could not take
+the route". Filterable by source, by level (as a floor — WARN means warnings and
+errors) and by text.
+
+**Connections** polls `/connections` once a second and groups by process, which
+is the question people actually bring to it: is *this program* going through the
+tunnel. Expanding a row shows the hosts behind it, each with the node that
+carried it and the rule that chose. `find-process-mode` is therefore always on —
+it costs a `libproc` lookup per connection, and without it every row reads "—".
+
+### One core, one controller port
+
+A privileged core outlives the app that started it: it is a root daemon's child,
+not the app's. Left running from a previous session it holds the controller
+port, so the core this session starts cannot bind it and **every API call
+silently addresses the old core instead** — wrong nodes, wrong connections, and
+a tunnel still carrying traffic while the window says "Отключено". Launch
+therefore stops any privileged core it did not ask for, alongside restoring the
+proxy settings.
+
+## Updating
+
+The app is not notarised and there is no App Store, so **Settings → Проверить
+обновления** does what a user would otherwise do by hand: ask GitHub for the
+latest release, download the universal DMG, and swap the bundle.
+
+The swap runs in a **detached shell script**, not in-process. An app cannot
+replace its own bundle while running, and a process that deletes its own
+executable behaves unpredictably from that moment on. The script waits for the
+app to exit, mounts the image, `ditto`s the new bundle over the old one —
+restoring the old one if the copy fails, rather than leaving no app at all — and
+relaunches.
+
+Versions compare numerically, so 1.0.10 beats 1.0.9; a string comparison gets
+that backwards.
+
 ## Split tunnelling
 
 Two ways in to one list of rules. The app toggles are a convenience over
@@ -312,7 +354,7 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-203 checks. A plain executable rather than XCTest, because XCTest ships with
+217 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`

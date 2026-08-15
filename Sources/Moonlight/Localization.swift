@@ -70,6 +70,17 @@ public enum L {
         case modeSystemProxy, modeSystemProxySub, modeTun, modeTunSub
         case helperInstall, helperInstallSub, helperRemove, helperInstalled
         case coreVersion, viewLog, viewLogSub, install, remove
+        // Logs
+        case navLogs, titleLogs, subtitleLogs
+        case logAll, logClient, logCore, logEmpty
+        case logTime, logLevel, logSource, logMessage
+        // Connections
+        case navConnections, titleConnections, subtitleConnections
+        case activeConnections, closeAll, noConnections, connectionsNeedTunnel
+        case colProcess, colChain, colRule, colNetwork, colDown, colUp, colTime
+        // Updates
+        case updateChecking, updateUpToDate, updateAvailable, updateDownloading
+        case updateInstalling, updateInstall, updateFailed
 
         var ru: String {
             switch self {
@@ -209,6 +220,38 @@ public enum L {
             case .viewLogSub: return "Последние строки от mihomo"
             case .install: return "Установить"
             case .remove: return "Удалить"
+            case .navLogs: return "Логи"
+            case .titleLogs: return "Логи"
+            case .subtitleLogs: return "Что делают клиент и ядро"
+            case .logAll: return "Все"
+            case .logClient: return "Клиент"
+            case .logCore: return "Ядро"
+            case .logEmpty: return "Пока пусто"
+            case .logTime: return "ВРЕМЯ"
+            case .logLevel: return "УРОВЕНЬ"
+            case .logSource: return "ИСТОЧНИК"
+            case .logMessage: return "СООБЩЕНИЕ"
+            case .navConnections: return "Подключения"
+            case .titleConnections: return "Подключения"
+            case .subtitleConnections: return "Какие программы и куда идут прямо сейчас"
+            case .activeConnections: return "Активно"
+            case .closeAll: return "Закрыть все"
+            case .noConnections: return "Нет активных подключений"
+            case .connectionsNeedTunnel: return "Подключения появятся, когда туннель заработает"
+            case .colProcess: return "ПРОЦЕСС"
+            case .colChain: return "ЦЕПОЧКА"
+            case .colRule: return "ПРАВИЛО"
+            case .colNetwork: return "СЕТЬ"
+            case .colDown: return "СКАЧАНО"
+            case .colUp: return "ОТДАНО"
+            case .colTime: return "ВРЕМЯ"
+            case .updateChecking: return "Проверяем…"
+            case .updateUpToDate: return "Установлена последняя версия"
+            case .updateAvailable: return "Доступна версия"
+            case .updateDownloading: return "Загрузка"
+            case .updateInstalling: return "Установка и перезапуск…"
+            case .updateInstall: return "Обновить"
+            case .updateFailed: return "Не удалось обновить"
             }
         }
 
@@ -350,6 +393,38 @@ public enum L {
             case .viewLogSub: return "The last lines from mihomo"
             case .install: return "Install"
             case .remove: return "Remove"
+            case .navLogs: return "Logs"
+            case .titleLogs: return "Logs"
+            case .subtitleLogs: return "What the client and the core are doing"
+            case .logAll: return "All"
+            case .logClient: return "Client"
+            case .logCore: return "Core"
+            case .logEmpty: return "Nothing yet"
+            case .logTime: return "TIME"
+            case .logLevel: return "LEVEL"
+            case .logSource: return "SOURCE"
+            case .logMessage: return "MESSAGE"
+            case .navConnections: return "Connections"
+            case .titleConnections: return "Connections"
+            case .subtitleConnections: return "Which programs are going where, right now"
+            case .activeConnections: return "Active"
+            case .closeAll: return "Close all"
+            case .noConnections: return "No active connections"
+            case .connectionsNeedTunnel: return "Connections appear once the tunnel is carrying traffic"
+            case .colProcess: return "PROCESS"
+            case .colChain: return "CHAIN"
+            case .colRule: return "RULE"
+            case .colNetwork: return "NETWORK"
+            case .colDown: return "DOWN"
+            case .colUp: return "UP"
+            case .colTime: return "TIME"
+            case .updateChecking: return "Checking…"
+            case .updateUpToDate: return "You are on the latest version"
+            case .updateAvailable: return "Version available"
+            case .updateDownloading: return "Downloading"
+            case .updateInstalling: return "Installing and restarting…"
+            case .updateInstall: return "Update"
+            case .updateFailed: return "Update failed"
             }
         }
     }

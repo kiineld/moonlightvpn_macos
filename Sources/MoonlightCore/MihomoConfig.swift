@@ -87,12 +87,12 @@ public struct MihomoConfig {
                     "external-controller-tls", "external-controller-unix"] {
             root.removeValue(forKey: key)
         }
-        // Finding the process behind a connection costs a syscall per
-        // connection, so it is only switched on when a rule actually needs it —
-        // a config of domain and address rules does not.
-        let needsProcess = overrides.splitMode != .all
-            && overrides.splitRules.contains { $0.enabled && $0.kind.needsProcessMatching }
-        root["find-process-mode"] = needsProcess ? "always" : "off"
+        // Always on. It costs a `libproc` lookup per connection, which is cheap,
+        // and two things depend on it: `PROCESS-*` split rules, and the
+        // connections screen — whose entire question is *which program* is going
+        // where. Switching it off when no process rule happened to be configured
+        // left that screen showing every connection as "—".
+        root["find-process-mode"] = "always"
 
         // ── Groups ──────────────────────────────────────────────────────────
         // A config from the share-link fallback has no groups; one from a panel

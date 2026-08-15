@@ -51,6 +51,10 @@ func configTests() {
         Check.equal(root["allow-lan"] as? Bool, false,
                     "allow-lan is forced off — an unbound listener is an open proxy")
         Check.equal(root["bind-address"] as? String, "127.0.0.1", "bound to loopback")
+        // Both the split rules and the connections screen need the core to know
+        // which process opened a connection.
+        Check.equal(root["find-process-mode"] as? String, "always",
+                    "process lookup is always on")
         Check.equal(root["mode"] as? String, "rule",
                     "the panel's global mode would ignore its own routing rules")
         // One mixed port is the whole surface this client needs.

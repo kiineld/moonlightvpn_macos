@@ -11,9 +11,9 @@ struct SettingsScreen: View {
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
 
+    @StateObject private var updater = Updater()
     @State private var helperBusy = false
     @State private var helperError: String?
-    @State private var showLog = false
 
     var body: some View {
         // The design's content area scrolls; settings is the screen that
@@ -230,25 +230,10 @@ struct SettingsScreen: View {
             ActionRow(
                 icon: .circleAlert,
                 fill: palette.cat3,
-                title: L.t(.viewLog, locale),
-                subtitle: L.t(.viewLogSub, locale),
-                trailing: showLog ? .minus : .plus
+                title: L.t(.navLogs, locale),
+                subtitle: L.t(.subtitleLogs, locale)
             ) {
-                withAnimation(Motion.enter) { showLog.toggle() }
-            }
-            if showLog {
-                ScrollView {
-                    Text(tunnel.coreLog.isEmpty ? "—" : tunnel.coreLog)
-                        .font(.mlMono(10.5, .regular))
-                        .foregroundStyle(palette.text2)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: 150)
-                .padding(10)
-                .background(palette.surface2)
-                .clipShape(RoundedRectangle(cornerRadius: Radii.field, style: .continuous))
-                .padding([.horizontal, .bottom], 12)
+                page = .logs
             }
         }
     }
@@ -272,20 +257,25 @@ struct SettingsScreen: View {
                     }
                     .layoutPriority(1)
                     Spacer(minLength: 0)
-                    Button {
-                        NSWorkspace.shared.open(AppConfig.releasesURL)
-                    } label: {
-                        Text(L.t(.checkUpdates, locale))
-                            .font(.ml(12.5, .heavy))
-                            .lineLimit(1)
-                            .fixedSize()
-                            .foregroundStyle(palette.text)
-                            .padding(.horizontal, 15)
-                            .frame(height: 36)
-                            .background(palette.surface2)
-                            .clipShape(Capsule())
-                    }
-                    .pressButton()
+                    updateButton
+                }
+
+                if case .available(let version, _) = updater.state {
+                    Text("\(L.t(.updateAvailable, locale)) \(version)")
+                        .font(.ml(12))
+                        .foregroundStyle(palette.accentInk)
+                        .padding(.top, 10)
+                } else if case .failed(let reason) = updater.state {
+                    Text("\(L.t(.updateFailed, locale)): \(reason)")
+                        .font(.ml(12))
+                        .foregroundStyle(palette.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 10)
+                } else if updater.state == .upToDate {
+                    Text(L.t(.updateUpToDate, locale))
+                        .font(.ml(12))
+                        .foregroundStyle(palette.textMuted)
+                        .padding(.top, 10)
                 }
 
                 palette.hairlineSoft.frame(height: 1).padding(.vertical, 16)
@@ -301,6 +291,71 @@ struct SettingsScreen: View {
             }
         }
     }
+
+    // MARK: - Updates
+
+    /// One button that walks the whole update: check, then install.
+    ///
+    /// The app is not notarised and there is no App Store to hand this to, so
+    /// the alternative was sending people to a download page to do by hand
+    /// exactly what this does — fetch the release, swap the bundle, relaunch.
+    @ViewBuilder
+    private var updateButton: some View {
+        switch updater.state {
+        case .checking, .downloading, .installing:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(L.t(progressLabel, locale))
+                    .font(.ml(12.5, .heavy))
+                    .foregroundStyle(palette.textMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 15)
+            .frame(height: 36)
+
+        case .available:
+            Button {
+                Task { await updater.install() }
+            } label: {
+                Text(L.t(.updateInstall, locale))
+                    .font(.ml(12.5, .heavy))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .foregroundStyle(palette.textOnAccent)
+                    .padding(.horizontal, 15)
+                    .frame(height: 36)
+                    .background(palette.accent)
+                    .clipShape(Capsule())
+            }
+            .pressButton()
+
+        default:
+            Button {
+                Task { await updater.check() }
+            } label: {
+                Text(L.t(.checkUpdates, locale))
+                    .font(.ml(12.5, .heavy))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .foregroundStyle(palette.text)
+                    .padding(.horizontal, 15)
+                    .frame(height: 36)
+                    .background(palette.surface2)
+                    .clipShape(Capsule())
+            }
+            .pressButton()
+        }
+    }
+
+    private var progressLabel: L.Key {
+        switch updater.state {
+        case .checking: return .updateChecking
+        case .installing: return .updateInstalling
+        default: return .updateDownloading
+        }
+    }
+
 }
 
 /// A radio-style row for the two tunnel transports.

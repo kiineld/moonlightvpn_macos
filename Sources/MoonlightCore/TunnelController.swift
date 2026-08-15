@@ -222,8 +222,10 @@ public final class TunnelController: ObservableObject {
     @discardableResult
     public func ensureCoreRunning() async -> Bool {
         guard hasSubscription else { return false }
-        // The helper's core counts: in TUN mode it is the one answering.
-        if activeMode == .tun, (try? helper.status().running) == true { return true }
+        // The helper's core counts: in TUN mode it is the one answering. Checked
+        // regardless of `activeMode`, because a core left running by a previous
+        // session is running whether or not this one knows about it.
+        if (try? helper.status().running) == true { return true }
         if core.isRunning { return true }
 
         do {
@@ -246,6 +248,8 @@ public final class TunnelController: ObservableObject {
         }
         try? await discoverSelector()
         restoreLatencies()
+        LogStore.shared.followCore(api)
+        LogStore.shared.client("Core ready — \(nodes.count) entries offered")
         return true
     }
 
@@ -257,6 +261,7 @@ public final class TunnelController: ObservableObject {
         }
         state = .connecting
         lastError = nil
+        LogStore.shared.client("Connecting via \(preferences.tunnelMode == .tun ? "TUN" : "system proxy")")
 
         do {
             let mode = preferences.tunnelMode
@@ -286,6 +291,7 @@ public final class TunnelController: ObservableObject {
                 // downloads them before the core binds its controller, and the
                 // window where the app still says "connecting" while traffic is
                 // already flowing is exactly what that timeout governs.
+                LogStore.shared.followCore(api)
                 guard await api.waitUntilReady(timeout: 90) else {
                     throw MihomoProcess.Failure.exited(0, coreLog)
                 }
@@ -308,8 +314,10 @@ public final class TunnelController: ObservableObject {
             sessionDown = 0
             beginMonitoring()
             state = .connected
+            LogStore.shared.client("Connected — \(selectedNode ?? "auto")")
         } catch {
             lastError = error.localizedDescription
+            LogStore.shared.client("Connect failed: \(error.localizedDescription)", level: .error)
             await teardown()
             state = .failed(error.localizedDescription)
             // Fall back to an idle core so the server list and ping keep working.
@@ -320,6 +328,7 @@ public final class TunnelController: ObservableObject {
     public func disconnect() async {
         guard state != .disconnected else { return }
         state = .disconnecting
+        LogStore.shared.client("Disconnecting")
         await teardown()
         state = .disconnected
         // Traffic stops; the core does not. Leaving it up is what keeps the next
@@ -548,6 +557,25 @@ public final class TunnelController: ObservableObject {
         }
     }
 
+    // MARK: - Connections
+
+    /// Every connection the core currently has open.
+    public func currentConnections() async -> [MihomoAPI.Connection] {
+        (try? await api.connections()) ?? []
+    }
+
+    /// Closes them all. The core reopens whatever is still wanted, which is how
+    /// traffic is forced onto a node that was just selected instead of waiting
+    /// for existing connections to age out.
+    public func closeAllConnections() async {
+        do {
+            try await api.closeAllConnections()
+            LogStore.shared.client("Closed all connections")
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     // MARK: - Settings that change the config
 
     public func setTunnelMode(_ mode: TunnelMode) async {
@@ -623,9 +651,21 @@ public final class TunnelController: ObservableObject {
     /// broken". The snapshot outlives the process precisely so this can be
     /// undone on the next launch.
     private func recoverFromCrash() {
-        guard let snapshot = preferences.proxySnapshot else { return }
-        SystemProxy.restore(snapshot)
-        preferences.proxySnapshot = nil
+        if let snapshot = preferences.proxySnapshot {
+            SystemProxy.restore(snapshot)
+            preferences.proxySnapshot = nil
+        }
+
+        // A privileged core outlives the app that started it — it is a root
+        // daemon's child, not ours. Left running it holds the controller port,
+        // so the core this session starts cannot bind it and every API call
+        // silently addresses the *old* core instead: wrong nodes, wrong
+        // connections, and a tunnel still carrying traffic while the window says
+        // "Отключено".
+        if (try? helper.status().running) == true {
+            LogStore.shared.client("Found a privileged core from a previous session — stopping it")
+            try? helper.stop()
+        }
     }
 
     // MARK: -

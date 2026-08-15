@@ -9,6 +9,7 @@ struct MoonlightApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var settings = AppSettings()
     @StateObject private var tunnel = TunnelController()
+    @StateObject private var logs = LogStore.shared
 
     init() {
         Fonts.register()
@@ -19,6 +20,7 @@ struct MoonlightApp: App {
             RootView()
                 .environmentObject(tunnel)
                 .environmentObject(settings)
+                .environmentObject(logs)
                 .onAppear {
                     delegate.tunnel = tunnel
                     delegate.settings = settings

@@ -89,6 +89,14 @@ public enum Format {
     /// `n/a` rather than a dash for a node that has not answered: a dash reads
     /// as "not measured yet", and the two are worth telling apart when one of
     /// them means the node is down.
+    /// How long ago something started: "4 с", "2 мин", "1 ч".
+    public static func age(_ since: Date, locale: AppLocale = .ru) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(since)))
+        if seconds < 60 { return "\(seconds) \(locale == .ru ? "с" : "s")" }
+        if seconds < 3600 { return "\(seconds / 60) \(locale == .ru ? "мин" : "m")" }
+        return "\(seconds / 3600) \(locale == .ru ? "ч" : "h")"
+    }
+
     public static func latency(_ ms: Int?, locale: AppLocale = .ru) -> String {
         guard let ms else { return "n/a" }
         return "\(ms) ms"

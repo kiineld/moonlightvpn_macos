@@ -13,6 +13,23 @@ struct PressScale: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? scale : 1)
             .animation(Motion.paint, value: configuration.isPressed)
+            .pointerCursor()
+    }
+}
+
+extension View {
+    /// The pointing hand on hover.
+    ///
+    /// AppKit does not infer this from a SwiftUI `Button` the way the web does
+    /// from an `<a>`, so every clickable surface has to ask. It lives in the
+    /// shared button style, which is what most of the app goes through.
+    func pointerCursor(_ enabled: Bool = true) -> some View {
+        onHover { inside in
+            guard enabled else { return }
+            // `push`/`pop` rather than `set`: nested hovers unwind correctly,
+            // and a view that disappears mid-hover does not strand the cursor.
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 }
 
@@ -158,6 +175,7 @@ struct MLToggle: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.45)
+        .pointerCursor(enabled)
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }
@@ -192,6 +210,7 @@ struct SegmentedPill<Value: Hashable>: View {
                         }
                 }
                 .buttonStyle(.plain)
+                .pointerCursor()
             }
         }
         .padding(3)
