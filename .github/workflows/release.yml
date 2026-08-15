@@ -130,9 +130,9 @@ jobs:
             echo
             echo "| Mac | File |"
             echo "|---|---|"
-            echo "| Any (Intel + Apple silicon) | \`Moonlight-$version-universal.dmg\` |"
-            echo "| Apple silicon only | \`Moonlight-$version-arm64.dmg\` |"
-            echo "| Intel only | \`Moonlight-$version-x86_64.dmg\` |"
+            echo "| Any (Intel + Apple silicon) | \`Moonlight-universal.dmg\` |"
+            echo "| Apple silicon only | \`Moonlight-arm64.dmg\` |"
+            echo "| Intel only | \`Moonlight-x86_64.dmg\` |"
             echo
             echo "The universal build runs everywhere; the per-architecture builds are"
             echo "about half the size."

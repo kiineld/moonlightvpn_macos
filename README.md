@@ -17,12 +17,14 @@ https://github.com/kiineld/moonlightvpn_macos/releases/latest/download/Moonlight
 
 | Mac | File |
 |---|---|
-| Any — Intel and Apple silicon | `Moonlight-<version>-universal.dmg` |
-| Apple silicon | `Moonlight-<version>-arm64.dmg` |
-| Intel | `Moonlight-<version>-x86_64.dmg` |
+| Any — Intel and Apple silicon | `Moonlight-universal.dmg` |
+| Apple silicon | `Moonlight-arm64.dmg` |
+| Intel | `Moonlight-x86_64.dmg` |
 
 The universal build runs everywhere; the per-architecture builds are about half
-the size. macOS 13 Ventura or later.
+the size. The filenames carry no version, so those URLs keep working across
+releases — the version is in the release title and in the bundle. macOS 13
+Ventura or later.
 
 Releases are cut by tagging: `git tag v1.2.3 && git push origin v1.2.3`.
 

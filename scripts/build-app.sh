@@ -28,34 +28,26 @@ RELEASES_URL="${RELEASES_URL:-https://github.com/kiineld/moonlightvpn_macos/rele
 scripts/fetch-mihomo.sh
 scripts/fetch-fonts.sh
 
-build_one() {
-  local arch="$1"
-  echo "▸ swift build ($arch)"
-  swift build -c release --arch "$arch" --scratch-path ".build/$arch"
-  echo ".build/$arch/release"
-}
+# A *multi*-arch build shells out to xcbuild, which lives inside Xcode.app —
+# the Command Line Tools do not have it. Single-arch builds do not need it, so
+# only the universal case is gated. Checking a fixed /Library path would be
+# wrong: the framework sits next to whichever developer directory is selected.
+if [ "$ARCH" = "universal" ] && \
+   [ ! -d "$(xcode-select -p)/../SharedFrameworks/XCBuild.framework" ]; then
+  echo "! ARCH=universal needs full Xcode (xcode-select -s /Applications/Xcode.app)." >&2
+  echo "  Use ARCH=native, ARCH=arm64 or ARCH=x86_64 for a single-slice build." >&2
+  exit 1
+fi
 
 case "$ARCH" in
-  universal)
-    # --arch needs xcbuild, which ships with full Xcode. CI has it; a machine
-    # with only the Command Line Tools does not, and gets a clear failure here
-    # rather than a mysterious one later.
-    if [ ! -x /Library/Developer/SharedFrameworks/XCBuild.framework/Versions/A/Support/xcbuild ]; then
-      echo "! ARCH=universal needs full Xcode (xcode-select -s /Applications/Xcode.app)" >&2
-      exit 1
-    fi
-    swift build -c release --arch arm64 --arch x86_64
-    BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
-    ;;
-  native)
-    swift build -c release
-    BIN_DIR="$(swift build -c release --show-bin-path)"
-    ;;
-  *)
-    swift build -c release --arch "$ARCH"
-    BIN_DIR="$(swift build -c release --arch "$ARCH" --show-bin-path)"
-    ;;
+  universal) ARCH_FLAGS=(--arch arm64 --arch x86_64) ;;
+  native)    ARCH_FLAGS=() ;;
+  *)         ARCH_FLAGS=(--arch "$ARCH") ;;
 esac
+
+echo "▸ swift build ($ARCH)"
+swift build -c release "${ARCH_FLAGS[@]}"
+BIN_DIR="$(swift build -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
 
 echo "▸ assembling $APP"
 rm -rf "$APP"
