@@ -36,6 +36,7 @@ public final class Preferences: @unchecked Sendable {
         static let secret = "coreSecret"
         static let cachedInfo = "cachedSubscriptionInfo"
         static let proxySnapshot = "proxySnapshot"
+        static let latencies = "latencies"
     }
 
     public var subscriptionURL: String? {
@@ -153,6 +154,17 @@ public final class Preferences: @unchecked Sendable {
         set {
             defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Key.cachedInfo)
         }
+    }
+
+    /// The last measured latency per node name.
+    ///
+    /// Kept so the numbers survive a screen change, a reconnect and a relaunch.
+    /// A measurement is expensive — it opens a connection through every node —
+    /// and throwing it away because the user looked at Settings makes the server
+    /// list useless exactly when they are choosing from it.
+    public var latencies: [String: Int] {
+        get { defaults.dictionary(forKey: Key.latencies) as? [String: Int] ?? [:] }
+        set { defaults.set(newValue, forKey: Key.latencies) }
     }
 
     /// The machine's proxy settings from before this app touched them.

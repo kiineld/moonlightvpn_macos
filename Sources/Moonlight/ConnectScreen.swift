@@ -314,6 +314,7 @@ private struct DialButton: View {
 
 private struct NodeRow: View {
     @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
     let node: Node
     let selected: Bool
     let measuring: Bool
@@ -324,15 +325,23 @@ private struct NodeRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Text(node.flag).font(.system(size: 20))
+                // A group the panel built — a balancer or an auto-picker — gets
+                // the accent bolt rather than a flag: it is not one place.
+                if node.isGroup {
+                    IconView(.zap, size: 16, strokeWidth: 2.2)
+                        .foregroundStyle(palette.accentInk)
+                        .frame(width: 24)
+                } else {
+                    Text(node.flag).font(.system(size: 20))
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(node.title)
                         .font(.ml(14, .bold))
                         .foregroundStyle(palette.text)
                         .lineLimit(1)
-                    Text(node.type.uppercased())
+                    Text(node.isGroup ? L.t(.smartGroup, locale) : node.type.uppercased())
                         .font(.ml(12))
-                        .foregroundStyle(palette.textMuted)
+                        .foregroundStyle(node.isGroup ? palette.accentInk : palette.textMuted)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -47,7 +47,9 @@ func formatTests() {
         Check.equal(Format.quota(used: 1_073_741_824, total: 0, locale: .en),
                     "1.0\u{00A0}GB · unlimited", "a zero total is unlimited")
 
-        Check.equal(Format.latency(nil), "—", "unmeasured latency is a dash, not 0 ms")
+        // n/a rather than a dash: a dash reads as "not measured yet", and the
+        // two are worth telling apart when one means the node is down.
+        Check.equal(Format.latency(nil), "n/a", "an unanswered node reads n/a, not 0 ms")
         Check.equal(Format.latency(24), "24 ms", "latency")
     }
 }

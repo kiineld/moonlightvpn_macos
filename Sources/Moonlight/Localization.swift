@@ -56,7 +56,7 @@ public enum L {
         case splitAll, splitOnly, splitExcept
         case splitHintAll, splitHintOnly, splitHintExcept
         case splitNeedsTun, splitNeedsTunAction, splitSummaryAll, splitSummaryCount
-        case searchApps, runningNow, installedApps, noApps, rules, rulesHelp
+        case searchApps, runningNow, installedApps, noApps, rules, rulesHelp, smartGroup
 
         // Settings
         case sectionSystem, sectionApp, sectionSupport, sectionTunnel
@@ -174,6 +174,7 @@ public enum L {
             case .noApps: return "Ничего не найдено"
             case .rules: return "ПРАВИЛА"
             case .rulesHelp: return "Правила по доменам, адресам и портам работают в обоих режимах. PROCESS-* требуют TUN."
+            case .smartGroup: return "Группа панели"
 
             case .sectionSystem: return "СИСТЕМА"
             case .sectionApp: return "ПРИЛОЖЕНИЕ"
@@ -315,6 +316,7 @@ public enum L {
             case .noApps: return "Nothing found"
             case .rules: return "RULES"
             case .rulesHelp: return "Domain, address and port rules work in both modes. PROCESS-* rules need TUN."
+            case .smartGroup: return "Panel group"
 
             case .sectionSystem: return "SYSTEM"
             case .sectionApp: return "APP"

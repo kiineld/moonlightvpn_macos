@@ -108,11 +108,17 @@ func coreIntegrationTests() {
                 let groups = try await api.groups()
                 let selector = groups.first { $0.name == "Панель" }
                 Check.notNil(selector, "the panel's own selector is visible over the API")
-                // Groups appear alongside nodes in `all`; the server list must
-                // not offer them as places.
+                // The selector's list is offered verbatim, groups included: a
+                // panel puts its balancers and auto-picker there deliberately,
+                // and filtering them out leaves the user picking raw nodes the
+                // operator never meant to offer directly.
                 let nodes = try await api.nodes(in: "Панель")
-                Check.equal(nodes.count, 2, "sub-groups are filtered out of the node list")
-                Check.equal(nodes.first?.name, "🇳🇱 Amsterdam", "node names round-trip with emoji")
+                Check.equal(nodes.count, 3, "everything the selector offers is listed")
+                Check.equal(nodes.first?.name, "Быстрый", "in the order the selector lists them")
+                Check.isTrue(nodes.first?.isGroup == true, "a url-test group is marked as a group")
+                Check.equal(nodes.filter { !$0.isGroup }.map(\.name),
+                            ["🇳🇱 Amsterdam", "🇫🇮 Helsinki"],
+                            "plain nodes keep their names, emoji and all")
 
                 // Selecting is the whole of "pick a server", and the name has to
                 // survive being put in a URL path.

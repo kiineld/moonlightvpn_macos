@@ -8,16 +8,25 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
     public var type: String
     public var server: String?
     /// Latency in milliseconds, from the last probe. Nil means never measured —
-    /// which the UI shows as `—`, not as `0 ms`.
+    /// which the UI shows as `n/a`, not as `0 ms`.
     public var latency: Int?
+    /// True for a `url-test`, `fallback` or `load-balance` group the panel put in
+    /// its selector. Those are choices the operator built deliberately — a
+    /// balancer across several nodes, or an auto-picker — and hiding them leaves
+    /// the user picking raw nodes the panel never meant to offer directly.
+    public var isGroup: Bool
 
     public var id: String { name }
 
-    public init(name: String, type: String, server: String? = nil, latency: Int? = nil) {
+    public init(
+        name: String, type: String, server: String? = nil,
+        latency: Int? = nil, isGroup: Bool = false
+    ) {
         self.name = name
         self.type = type
         self.server = server
         self.latency = latency
+        self.isGroup = isGroup
     }
 
     /// The flag emoji a panel conventionally prefixes to a node name, split off

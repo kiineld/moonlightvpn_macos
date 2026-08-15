@@ -94,6 +94,10 @@ public final class TunnelController: ObservableObject {
         }
 
         recoverFromCrash()
+
+        // Warm the core as soon as there is a subscription, so the first latency
+        // pass is instant rather than paying for a cold start.
+        Task { await ensureCoreRunning() }
     }
 
     public var hasSubscription: Bool {
@@ -157,12 +161,17 @@ public final class TunnelController: ObservableObject {
             lastRefresh = Date()
             lastError = nil
 
-            if state.isConnected {
+            if state.isConnected || core.isRunning {
                 // Reload in place rather than reconnecting: a refresh should not
-                // drop a working tunnel.
+                // drop a working tunnel, and the idle core has to pick up the new
+                // nodes too — otherwise the list falls back to the raw `proxies:`
+                // and the panel's own groups disappear from it.
                 try await reloadRunningCore()
             } else {
+                // No core yet: the raw proxy list is all there is to show until
+                // one comes up and the selector can be read properly.
                 nodes = try nodesFromPanelConfig()
+                await ensureCoreRunning()
             }
             return true
         } catch {
@@ -177,6 +186,46 @@ public final class TunnelController: ObservableObject {
         state.isConnected ? await disconnect() : await connect()
     }
 
+    /// Brings the core up **without routing anything through it**.
+    ///
+    /// The core running and the tunnel being on are separate facts, and keeping
+    /// them separate is what makes a latency pass instant: the outbounds a probe
+    /// needs already exist. Connecting then only has to point traffic at a core
+    /// that is already warm — which is how FlClash and Clash Verge Rev behave,
+    /// and why their ping is immediate.
+    ///
+    /// Nothing here touches system state: no proxy settings are written and no
+    /// TUN block is in the config.
+    @discardableResult
+    public func ensureCoreRunning() async -> Bool {
+        guard hasSubscription else { return false }
+        // The helper's core counts: in TUN mode it is the one answering.
+        if activeMode == .tun, (try? helper.status().running) == true { return true }
+        if core.isRunning { return true }
+
+        do {
+            let yaml = try MihomoConfig.build(
+                panelYAML: try loadPanelYAML(),
+                overrides: overrides(mode: .systemProxy)
+            )
+            try yaml.write(to: configURL, atomically: true, encoding: .utf8)
+            try core.validate(configPath: configURL)
+            try core.start(configPath: configURL)
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+
+        guard await api.waitUntilReady() else {
+            lastError = "The core did not start"
+            core.stop()
+            return false
+        }
+        try? await discoverSelector()
+        restoreLatencies()
+        return true
+    }
+
     public func connect() async {
         guard !state.isBusy, !state.isConnected else { return }
         guard hasSubscription else {
@@ -188,54 +237,47 @@ public final class TunnelController: ObservableObject {
 
         do {
             let mode = preferences.tunnelMode
-            let panelYAML = try loadPanelYAML()
-            let yaml = try MihomoConfig.build(panelYAML: panelYAML, overrides: overrides(mode: mode))
-
             switch mode {
             case .systemProxy:
-                // Validate before starting: `mihomo -t` names the offending key,
-                // whereas a core that dies at startup leaves only an exit status.
-                try yaml.write(to: configURL, atomically: true, encoding: .utf8)
-                try core.validate(configPath: configURL)
-                try core.start(configPath: configURL)
+                // The core is already up for probing; connecting is only a
+                // matter of pointing the machine at it.
+                guard await ensureCoreRunning() else {
+                    throw MihomoProcess.Failure.exited(0, lastError ?? "core unavailable")
+                }
+                if preferences.proxySnapshot == nil {
+                    preferences.proxySnapshot = SystemProxy.snapshot()
+                }
+                SystemProxy.enable(port: preferences.mixedPort)
 
             case .tun:
+                // TUN needs the core to run as root, so the idle one has to go.
+                core.stop()
+                let yaml = try MihomoConfig.build(
+                    panelYAML: try loadPanelYAML(),
+                    overrides: overrides(mode: .tun)
+                )
                 try helper.version()
                 try helper.start(config: yaml)
-            }
-            activeMode = mode
 
-            guard await api.waitUntilReady() else {
-                throw MihomoProcess.Failure.exited(0, coreLog)
-            }
-
-            // A TUN interface that fails to come up does not stop the core: it
-            // keeps running and keeps answering its API, so without this check
-            // the app reports a healthy tunnel while nothing is routed through
-            // it. The interface is established shortly after the API binds, so
-            // the log is given a moment to catch up.
-            if mode == .tun {
+                // Longer than the default: a panel config with `rule-providers`
+                // downloads them before the core binds its controller, and the
+                // window where the app still says "connecting" while traffic is
+                // already flowing is exactly what that timeout governs.
+                guard await api.waitUntilReady(timeout: 90) else {
+                    throw MihomoProcess.Failure.exited(0, coreLog)
+                }
+                // A TUN interface that fails to come up does not stop the core:
+                // it keeps running and keeps answering its API, so without this
+                // the app reports a healthy tunnel while nothing is routed.
                 try await Task.sleep(nanoseconds: 700_000_000)
                 if let reason = MihomoProcess.tunFailure(in: coreLog) {
                     throw MihomoProcess.Failure.exited(0, reason)
                 }
             }
+            activeMode = mode
 
-            // The selector has to exist before a node can be picked, and picking
-            // has to happen before traffic is let in — otherwise the first
-            // seconds go through whatever node the config happened to list first.
             try await discoverSelector()
             await applySelection()
-
-            // System proxy goes on last, once the core is answering. Setting it
-            // first would break every app on the machine for as long as the core
-            // took to come up, including this one.
-            if mode == .systemProxy {
-                if preferences.proxySnapshot == nil {
-                    preferences.proxySnapshot = SystemProxy.snapshot()
-                }
-                SystemProxy.enable(port: preferences.mixedPort)
-            }
 
             startedAt = Date()
             uptime = 0
@@ -247,6 +289,8 @@ public final class TunnelController: ObservableObject {
             lastError = error.localizedDescription
             await teardown()
             state = .failed(error.localizedDescription)
+            // Fall back to an idle core so the server list and ping keep working.
+            await ensureCoreRunning()
         }
     }
 
@@ -255,21 +299,22 @@ public final class TunnelController: ObservableObject {
         state = .disconnecting
         await teardown()
         state = .disconnected
+        // Traffic stops; the core does not. Leaving it up is what keeps the next
+        // latency pass instant.
+        await ensureCoreRunning()
     }
 
-    /// Teardown runs in the reverse order of ``connect()``: proxy settings go
-    /// back before the core stops, so no window exists where the machine points
-    /// at a listener that is already gone.
+    /// Stops routing. Teardown runs in the reverse order of ``connect()``: proxy
+    /// settings go back before the core stops, so no window exists where the
+    /// machine points at a listener that is already gone.
     private func teardown() async {
         trafficTask?.cancel()
         trafficTask = nil
         uptimeTimer?.invalidate()
         uptimeTimer = nil
 
-        if activeMode == .systemProxy || activeMode == nil {
-            SystemProxy.restore(preferences.proxySnapshot)
-            preferences.proxySnapshot = nil
-        }
+        SystemProxy.restore(preferences.proxySnapshot)
+        preferences.proxySnapshot = nil
 
         switch activeMode {
         case .tun: try? helper.stop()
@@ -362,15 +407,21 @@ public final class TunnelController: ObservableObject {
             throw MihomoConfig.Failure.noProxies
         }
         nodes = try await api.nodes(in: selectorGroup)
+        restoreLatencies()
     }
 
     private func reloadRunningCore() async throws {
+        // An idle core routes nothing, so it never gets a TUN block — it runs as
+        // the user and could not create a `utun` device anyway.
+        let mode: TunnelMode = state.isConnected
+            ? (activeMode ?? preferences.tunnelMode)
+            : .systemProxy
         let yaml = try MihomoConfig.build(
             panelYAML: try loadPanelYAML(),
-            overrides: overrides(mode: activeMode ?? preferences.tunnelMode)
+            overrides: overrides(mode: mode)
         )
-        switch activeMode {
-        case .tun:
+        switch mode {
+        case .tun where state.isConnected:
             // The helper owns its config file, so a reload there is a restart of
             // the core it supervises — the tunnel blips, which is the cost of not
             // letting an unprivileged process write a root-read path.
@@ -387,87 +438,45 @@ public final class TunnelController: ObservableObject {
 
     // MARK: - Latency
 
-    /// Measures every node.
+    /// Measures every node the selector offers.
     ///
-    /// While the tunnel is up the probes go through the running core. While it
-    /// is **down** they go through a throwaway one: the outbounds a probe needs
-    /// do not exist until a core is running, but nothing about that requires the
-    /// core to be *the* tunnel. A second instance on its own ports, with no
-    /// system proxy applied and no TUN block, measures the same nodes and
-    /// touches no system state.
-    ///
-    /// This is why the button is live when disconnected — picking a server is
-    /// exactly when the latencies matter, and requiring a connection first made
-    /// the numbers useless for the choice they inform.
+    /// Instant, because a core is always running — see ``ensureCoreRunning()``.
+    /// The probes go through that core's own outbounds whether or not traffic is
+    /// currently being routed through it.
     public func pingAll() async {
         guard !isPinging else { return }
-        if nodes.isEmpty { nodes = (try? nodesFromPanelConfig()) ?? [] }
-        guard !nodes.isEmpty else { return }
-
         isPinging = true
         defer { isPinging = false }
 
-        let measured: [String: Int]
-        if state.isConnected {
-            measured = await api.delays(nodes: nodes.map(\.name))
-        } else {
-            measured = await probeWithThrowawayCore()
-        }
+        guard await ensureCoreRunning() else { return }
+        if nodes.isEmpty { try? await discoverSelector() }
+        guard !nodes.isEmpty else { return }
 
-        for index in nodes.indices {
-            nodes[index].latency = measured[nodes[index].name]
+        // Clear first, so a node that has since gone down does not keep showing
+        // the number it managed last time while the pass is still running.
+        for index in nodes.indices { nodes[index].latency = nil }
+
+        let measured = await api.delays(nodes: nodes.map(\.name)) { name, delay in
+            await Self.record(name: name, delay: delay, on: self)
         }
+        preferences.latencies = measured
         if autoSelect { await applySelection() }
     }
 
-    /// Starts a core purely to measure, then stops it.
-    ///
-    /// Its ports are offset from the tunnel's so a probe can never collide with
-    /// a core this app is already running, and it shares the tunnel's data
-    /// directory so the geo databases are not downloaded a second time.
-    private func probeWithThrowawayCore() async -> [String: Int] {
-        let port = preferences.controllerPort + 1000
-        let secret = preferences.coreSecret
-        let probeConfig = support.appendingPathComponent("probe.yaml")
+    /// Applies one node's result as it lands, on the main actor.
+    private static func record(name: String, delay: Int?, on controller: TunnelController) async {
+        guard let index = controller.nodes.firstIndex(where: { $0.name == name }) else { return }
+        controller.nodes[index].latency = delay
+    }
 
-        do {
-            let yaml = try MihomoConfig.build(
-                panelYAML: try loadPanelYAML(),
-                overrides: MihomoConfig.Overrides(
-                    controllerPort: port,
-                    secret: secret,
-                    mixedPort: preferences.mixedPort + 1000,
-                    // Never TUN: a probe must not create an interface or touch
-                    // the routing table.
-                    mode: .systemProxy,
-                    splitMode: .all,
-                    dataDirectory: support.appendingPathComponent("core").path
-                )
-            )
-            try yaml.write(to: probeConfig, atomically: true, encoding: .utf8)
-        } catch {
-            lastError = error.localizedDescription
-            return [:]
+    /// Puts the last measured numbers back after the node list is rebuilt, so a
+    /// screen change or a reconnect does not blank the server list.
+    private func restoreLatencies() {
+        let saved = preferences.latencies
+        guard !saved.isEmpty else { return }
+        for index in nodes.indices where nodes[index].latency == nil {
+            nodes[index].latency = saved[nodes[index].name]
         }
-
-        let prober = MihomoProcess(
-            binary: coreBinary,
-            dataDirectory: support.appendingPathComponent("core", isDirectory: true)
-        )
-        do {
-            try prober.start(configPath: probeConfig)
-        } catch {
-            lastError = error.localizedDescription
-            return [:]
-        }
-        defer { prober.stop() }
-
-        let probeAPI = MihomoAPI(port: port, secret: secret)
-        guard await probeAPI.waitUntilReady(timeout: 25) else {
-            lastError = "Could not start a core to measure with"
-            return [:]
-        }
-        return await probeAPI.delays(nodes: nodes.map(\.name))
     }
 
     // MARK: - Settings that change the config

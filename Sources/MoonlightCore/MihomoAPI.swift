@@ -93,8 +93,14 @@ public actor MihomoAPI {
         }
     }
 
-    /// Every node the config carries, in the order the selector lists them, with
-    /// the group's own sub-groups filtered out.
+    /// Everything the selector offers, in the order it lists them.
+    ///
+    /// Groups are **kept**. A panel template routinely puts a `url-test`
+    /// auto-picker and a set of `load-balance` groups in its selector — those are
+    /// the choices its operator built, and the raw nodes underneath them are
+    /// implementation detail. Filtering them out left the user picking from
+    /// twenty nodes the panel never meant to offer directly, with the balancers
+    /// nowhere to be seen.
     public func nodes(in group: String) async throws -> [Node] {
         guard let object = try await get("/proxies") as? [String: Any],
               let proxies = object["proxies"] as? [String: Any],
@@ -104,9 +110,6 @@ public actor MihomoAPI {
         return names.compactMap { name -> Node? in
             guard let entry = proxies[name] as? [String: Any],
                   let type = entry["type"] as? String else { return nil }
-            // Groups appear in `all` alongside nodes; they are selectable but
-            // are not places, so the server list must not show them as such.
-            guard !Self.groupTypes.contains(type.lowercased()) else { return nil }
 
             // `history` is the core's own record of past delay probes; its last
             // entry is what the UI shows until a fresh probe replaces it.
@@ -115,7 +118,12 @@ public actor MihomoAPI {
                let last = history.last, let delay = last["delay"] as? Int, delay > 0 {
                 latency = delay
             }
-            return Node(name: name, type: type, latency: latency)
+            return Node(
+                name: name,
+                type: type,
+                latency: latency,
+                isGroup: Self.groupTypes.contains(type.lowercased())
+            )
         }
     }
 
@@ -166,7 +174,19 @@ public actor MihomoAPI {
     /// as long as its slowest node rather than the sum. Concurrency is still
     /// capped, because a subscription with sixty nodes would otherwise open
     /// sixty TLS handshakes at once and measure congestion instead of latency.
-    public func delays(nodes: [String], concurrency: Int = 8) async -> [String: Int] {
+    /// `onResult` fires as each node answers, not at the end of the pass.
+    ///
+    /// A pass over twenty nodes takes several seconds no matter how it is
+    /// written — the slow ones have to time out. Reporting each result as it
+    /// lands is what makes it *feel* immediate: the fast nodes, which are the
+    /// ones being chosen between, appear straight away instead of behind the
+    /// slowest node in the list.
+    @discardableResult
+    public func delays(
+        nodes: [String],
+        concurrency: Int = 8,
+        onResult: (@Sendable (String, Int?) async -> Void)? = nil
+    ) async -> [String: Int] {
         var results: [String: Int] = [:]
         var index = 0
 
@@ -181,6 +201,7 @@ public actor MihomoAPI {
 
             while let (node, delay) = await group.next() {
                 if let delay { results[node] = delay }
+                await onResult?(node, delay)
                 addNext()
             }
         }

@@ -28,6 +28,8 @@ struct MoonlightApp: App {
                     // server list something to show before the network answers.
                     if tunnel.hasSubscription {
                         await tunnel.refresh()
+                        // The core is warmed by the controller itself; this only
+                        // decides whether traffic is routed through it.
                         if settings.autoConnect { await tunnel.connect() }
                     }
                 }

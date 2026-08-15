@@ -68,6 +68,21 @@ The core is never reconfigured by restarting it. Switching a node, changing the
 split mode, or loading a refreshed subscription all go through the API or a
 config reload, so the tunnel survives every one of them.
 
+### The core runs whether or not the tunnel is on
+
+A core being up and traffic being routed through it are separate facts, and this
+client keeps them separate. As soon as there is a subscription the core starts —
+with no proxy settings written and no TUN block in its config, so it routes
+nothing. Connecting then only points traffic at a core that is already warm.
+
+That is what makes a latency pass immediate: the outbounds a probe needs already
+exist, so pressing **Пинг** starts measuring instead of starting a core. It is
+also how FlClash and Clash Verge Rev behave, and why their ping feels instant.
+
+TUN is the one exception. Its core has to run as root under the helper, so
+connecting there stops the idle core and starts the privileged one; disconnecting
+reverses it.
+
 ## Two ways traffic reaches the tunnel
 
 These are different mechanisms, not a preference.
@@ -224,15 +239,22 @@ as long as its slowest node rather than the sum; concurrency is still capped at
 8, because a subscription with sixty nodes would otherwise open sixty TLS
 handshakes at once and measure congestion instead of latency.
 
-Available whether or not the tunnel is up. With it down the probes run through a
-**throwaway core** on offset ports, with no system proxy applied and no TUN
-block: the outbounds a probe needs do not exist until a core is running, but
-nothing about that requires the core to be *the* tunnel. Picking a server is
-exactly when the latencies matter, and requiring a connection first made the
-numbers useless for the choice they inform.
+Available whether or not the tunnel is up, because a core is always running.
 
-An unreachable node reports *unknown*, not an error: a timeout is the expected
-answer for a node that is down.
+Results are applied **as each node answers** rather than at the end of the pass.
+A pass over twenty nodes takes several seconds no matter how it is written — the
+dead ones have to time out — so reporting each result as it lands is what makes
+it feel immediate: the fast nodes, which are the ones being chosen between,
+appear straight away instead of behind the slowest entry in the list.
+
+Numbers are kept in preferences, so they survive a screen change, a reconnect
+and a relaunch. A measurement opens a connection through every node, and
+throwing it away because the user looked at Settings makes the server list
+useless exactly when they are choosing from it.
+
+An unreachable node reads **n/a**, not an error and not a dash: a timeout is the
+expected answer for a node that is down, and "not measured yet" is a different
+thing worth telling apart from it.
 
 ## Geodata
 
@@ -290,7 +312,7 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-180 checks. A plain executable rather than XCTest, because XCTest ships with
+186 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`
