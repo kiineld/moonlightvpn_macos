@@ -312,7 +312,7 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-186 checks. A plain executable rather than XCTest, because XCTest ships with
+203 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`

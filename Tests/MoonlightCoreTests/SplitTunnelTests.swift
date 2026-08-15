@@ -181,3 +181,23 @@ func nodePresentationTests() {
         Check.equal(bare.subtitle(.ru), "", "nothing known means nothing shown")
     }
 }
+
+/// A panel that ships its own `url-test` group is offering the same thing the
+/// app's "Авто" row does. Showing both gave two rows for one job.
+func autoPickerTests() {
+    Check.suite("Node · auto-picker") {
+        Check.isTrue(Node(name: "Auto ⚡", type: "URLTest", isGroup: true).isAutoPicker,
+                     "a url-test group picks by latency")
+        Check.isTrue(Node(name: "Backup", type: "Fallback", isGroup: true).isAutoPicker,
+                     "so does a fallback group")
+        // A balancer spreads load across a country; it is a place, not a picker.
+        Check.isTrue(!Node(name: "🇩🇪 Russia -> Germany ⚡️", type: "LoadBalance",
+                           isGroup: true).isAutoPicker,
+                     "a load-balance group is a place, not a picker")
+        Check.isTrue(!Node(name: "🇸🇪 Sweden", type: "Vless").isAutoPicker,
+                     "a plain node is not a picker")
+        // Type alone is not enough: the entry has to be a group.
+        Check.isTrue(!Node(name: "x", type: "URLTest", isGroup: false).isAutoPicker,
+                     "the entry has to be a group")
+    }
+}

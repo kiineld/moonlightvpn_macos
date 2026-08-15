@@ -125,7 +125,7 @@ struct ConnectScreen: View {
                 HStack {
                     Overline(text: L.t(.servers, locale))
                     Spacer()
-                    Text("\(tunnel.nodes.count) \(L.t(.nodesCount, locale))")
+                    Text("\(tunnel.selectableNodes.count) \(L.t(.nodesCount, locale))")
                         .font(.ml(12))
                         .foregroundStyle(palette.textMuted)
                 }
@@ -142,7 +142,7 @@ struct ConnectScreen: View {
                         .padding(.vertical, 8)
                     ScrollView {
                         LazyVStack(spacing: 2) {
-                            ForEach(tunnel.nodes) { node in
+                            ForEach(tunnel.selectableNodes) { node in
                                 NodeRow(
                                     node: node,
                                     selected: !tunnel.autoSelect && node.name == tunnel.selectedNode,
@@ -189,6 +189,12 @@ struct ConnectScreen: View {
         .padding(.horizontal, 12)
     }
 
+    /// The one automatic row.
+    ///
+    /// When the panel's selector carries its own `url-test` group, this row *is*
+    /// that group — choosing it hands the decision to the panel's picker, which
+    /// is what its operator built. Showing the app's own "Авто" beside it gave
+    /// two rows doing the same job with different answers.
     private var autoRow: some View {
         Button {
             Task { await tunnel.selectAuto() }
@@ -209,6 +215,17 @@ struct ConnectScreen: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let auto = tunnel.panelAutoNode {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(auto.latency.map { palette.pingColor($0) } ?? palette.textMuted)
+                            .frame(width: 6, height: 6)
+                        Text(tunnel.pendingProbes.contains(auto.name)
+                             ? "…" : Format.latency(auto.latency))
+                            .font(.mlMono(12.5))
+                            .foregroundStyle(palette.text2)
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
@@ -221,11 +238,16 @@ struct ConnectScreen: View {
     }
 
     private var autoSubtitle: String {
-        guard tunnel.autoSelect, let name = tunnel.selectedNode,
-              let node = tunnel.nodes.first(where: { $0.name == name }) else {
-            return L.t(.autoSubtitle, locale)
+        // While it is the active choice, say which node it landed on — that is
+        // the thing the row cannot otherwise tell you.
+        if tunnel.autoSelect, let name = tunnel.selectedNode,
+           let node = tunnel.nodes.first(where: { $0.name == name }), !node.isAutoPicker {
+            return "\(L.t(.autoPicked, locale)) \(node.title) · \(Format.latency(node.latency))"
         }
-        return "\(L.t(.autoPicked, locale)) \(node.title) · \(Format.latency(node.latency))"
+        if let auto = tunnel.panelAutoNode, let label = auto.protocolLabel {
+            return label
+        }
+        return L.t(.autoSubtitle, locale)
     }
 }
 

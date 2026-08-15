@@ -9,6 +9,7 @@ configTests()
 splitTunnelTests()
 tunFailureTests()
 nodePresentationTests()
+autoPickerTests()
 coreIntegrationTests()
 
 Check.report()

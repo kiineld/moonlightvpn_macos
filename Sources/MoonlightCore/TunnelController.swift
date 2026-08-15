@@ -107,6 +107,22 @@ public final class TunnelController: ObservableObject {
         Task { await ensureCoreRunning() }
     }
 
+    /// The panel's own auto-picker, if its selector offers one.
+    ///
+    /// Taken in the selector's order, so a panel that lists a general picker
+    /// first and country-specific ones later gets the general one — those later
+    /// ones are named for a country and belong in the list as ordinary rows.
+    public var panelAutoNode: Node? {
+        nodes.first { $0.isAutoPicker }
+    }
+
+    /// Everything the selector offers except the picker promoted to the top,
+    /// so it is not listed twice.
+    public var selectableNodes: [Node] {
+        guard let auto = panelAutoNode else { return nodes }
+        return nodes.filter { $0.name != auto.name }
+    }
+
     public var hasSubscription: Bool {
         preferences.subscriptionURL?.isEmpty == false
     }

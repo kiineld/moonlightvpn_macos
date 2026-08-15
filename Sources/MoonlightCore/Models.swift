@@ -35,6 +35,13 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
     /// which reports only the bare type.
     public var protocolLabel: String?
 
+    /// True for a group that picks a node by latency on its own — `url-test` or
+    /// `fallback`. That is the same job the app's own "Авто" row does, so when a
+    /// panel offers one there is no reason to show both.
+    public var isAutoPicker: Bool {
+        isGroup && ["urltest", "fallback"].contains(type.lowercased())
+    }
+
     private static let regionalIndicators = UInt32(0x1F1E6)...UInt32(0x1F1FF)
 
     private var flagScalars: [Unicode.Scalar] {
