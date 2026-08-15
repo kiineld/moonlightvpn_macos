@@ -72,17 +72,6 @@ struct ImportScreen: View {
                 }
             }
 
-            RowGroup {
-                ActionRow(
-                    icon: .send,
-                    fill: palette.telegramBlue,
-                    title: L.t(.openTelegramBot, locale),
-                    subtitle: L.t(.telegramBotSubtitle, locale)
-                ) {
-                    NSWorkspace.shared.open(AppConfig.telegramBotURL)
-                }
-            }
-
             if let error = tunnel.lastError {
                 HStack(spacing: 8) {
                     IconView(.circleAlert, size: 16)
@@ -93,15 +82,6 @@ struct ImportScreen: View {
                 .foregroundStyle(palette.danger)
             }
 
-            Button {
-                page = .subscription
-            } label: {
-                Text(L.t(.backToSubscription, locale))
-                    .font(.ml(13, .bold))
-                    .foregroundStyle(palette.textMuted)
-                    .frame(height: 40)
-            }
-            .buttonStyle(.plain)
         }
         .onAppear { focused = true }
     }

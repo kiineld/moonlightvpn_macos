@@ -12,11 +12,14 @@ struct RootView: View {
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
     /// `scripts/screenshots.sh`, which cannot click without accessibility
     /// permission, and is inert when unset.
+    /// Where AppKit put the traffic lights, measured rather than assumed.
+    @State private var titleBarCentre: CGFloat = 14
     @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "apps": return .apps; case "settings": return .settings; case "import": return .importSubscription; default: return .connect } }()
 
     var body: some View {
         VStack(spacing: 0) {
-            TitleBar(status: statusLabel, connected: tunnel.state.isConnected)
+            TitleBar(status: statusLabel, connected: tunnel.state.isConnected,
+                     centre: titleBarCentre)
             HStack(spacing: 0) {
                 Sidebar(page: $page)
                 VStack(spacing: 0) {
@@ -27,6 +30,12 @@ struct RootView: View {
             }
         }
         .background(settings.palette.bg)
+        // macOS reports the title bar as a top safe-area inset, so without this
+        // the strip is laid out *below* the traffic lights and the wordmark ends
+        // up on its own row. Ignoring the inset puts the content origin at the
+        // top of the window, where the strip can sit around them.
+        .ignoresSafeArea(.container, edges: .top)
+        .background(WindowConfigurator(buttonCentre: $titleBarCentre))
         .environment(\.palette, settings.palette)
         .mlLocale(settings.locale)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
@@ -79,14 +88,17 @@ struct RootView: View {
 /// view's leading edge — hence the leading padding rather than the design's own
 /// drawn circles. Drawing fake ones would give the window two sets.
 ///
-/// The height is 28pt, not the design's 40, because AppKit centres the traffic
-/// lights in the *standard* titlebar height and gives no supported way to move
-/// them. At 40pt the wordmark sat six points below the buttons; matching the
-/// height is what puts them on one row.
+/// The height is twice the measured button centre rather than the design's 40,
+/// because AppKit centres the traffic lights itself and gives no supported way
+/// to move them. Sizing the strip from where they actually are is what puts the
+/// wordmark on their line; a fixed height left it a few points below.
 private struct TitleBar: View {
     @Environment(\.palette) private var palette
     let status: String
     let connected: Bool
+    /// The traffic lights' centre. The strip is twice this, so its own centred
+    /// content lands on exactly their line.
+    let centre: CGFloat
 
     var body: some View {
         HStack(spacing: 9) {
@@ -103,7 +115,7 @@ private struct TitleBar: View {
         .foregroundStyle(palette.textMuted)
         .padding(.leading, 78)
         .padding(.trailing, 14)
-        .frame(height: 28)
+        .frame(height: max(28, centre * 2))
         .frame(maxWidth: .infinity)
         .background(palette.bgDeep)
         .overlay(alignment: .bottom) { palette.hairline.frame(height: 1) }
@@ -295,10 +307,11 @@ private struct Header: View {
             ) {
                 Task { await tunnel.pingAll() }
             }
-            // Probing goes through the core's own outbounds, which do not exist
-            // until it is up.
-            .disabled(!tunnel.state.isConnected)
-            .opacity(tunnel.state.isConnected ? 1 : 0.45)
+            // Live whether or not the tunnel is up: with it down the probe runs
+            // through a throwaway core on its own ports. Picking a server is
+            // exactly when the latencies matter.
+            .disabled(!tunnel.hasSubscription || tunnel.isPinging)
+            .opacity(tunnel.hasSubscription ? 1 : 0.45)
 
             PillButton(
                 title: L.t(tunnel.isRefreshing ? .refreshing : .refresh, locale),

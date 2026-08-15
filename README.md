@@ -213,7 +213,13 @@ as long as its slowest node rather than the sum; concurrency is still capped at
 8, because a subscription with sixty nodes would otherwise open sixty TLS
 handshakes at once and measure congestion instead of latency.
 
-Only possible while connected — the outbounds do not exist until the core is up.
+Available whether or not the tunnel is up. With it down the probes run through a
+**throwaway core** on offset ports, with no system proxy applied and no TUN
+block: the outbounds a probe needs do not exist until a core is running, but
+nothing about that requires the core to be *the* tunnel. Picking a server is
+exactly when the latencies matter, and requiring a connection first made the
+numbers useless for the choice they inform.
+
 An unreachable node reports *unknown*, not an error: a timeout is the expected
 answer for a node that is down.
 
@@ -329,12 +335,13 @@ whichever client already holds it.
 
 ## Known limitations
 
-- **A tunnel carrying traffic has not been confirmed.** Against a live
-  Remnawave panel the subscription is fetched, the config is built and the core
-  loads it with the panel's own geosite rules intact — that much is observed
-  from a real run. TUN then failed on that machine because another VPN client
-  already held the routes, which is what the check below now reports. The
-  remaining step, packets flowing to a node, is unverified.
+- **The tunnel has not been left up carrying ordinary traffic.** Against a live
+  Remnawave panel the subscription is fetched, the config is built, the core
+  loads it with the panel's own geosite rules intact, and nodes answer a
+  `generate_204` through a full VLESS handshake — 10 of 20 on the pass observed,
+  the rest timing out as down. So traffic does reach the nodes. What has not
+  been exercised is a session left connected with the machine's own traffic
+  going through it.
 - **Sidebar hover in light mode is unverified.** It was a white wash on a
   near-white sidebar; it is now an accent tint with accent-ink text and a
   hairline. Synthetic pointer events do not reach SwiftUI's tracking areas, so

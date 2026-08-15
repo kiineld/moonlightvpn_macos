@@ -40,6 +40,7 @@ public final class TunnelController: ObservableObject {
     private var api: MihomoAPI
 
     private let support: URL
+    private let coreBinary: URL
     private var configURL: URL { support.appendingPathComponent("config.yaml") }
     private var panelURL: URL { support.appendingPathComponent("subscription.yaml") }
 
@@ -67,6 +68,7 @@ public final class TunnelController: ObservableObject {
             .appendingPathComponent("Moonlight", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
 
+        coreBinary = bundle.coreBinaryURL
         core = MihomoProcess(
             binary: bundle.coreBinaryURL,
             dataDirectory: support.appendingPathComponent("core", isDirectory: true)
@@ -385,21 +387,87 @@ public final class TunnelController: ObservableObject {
 
     // MARK: - Latency
 
-    /// Measures every node through the running core.
+    /// Measures every node.
     ///
-    /// Only possible while connected: the probe goes through the core's own
-    /// outbounds, which do not exist until it is up. With the tunnel down the
-    /// server list shows whatever the last pass measured.
+    /// While the tunnel is up the probes go through the running core. While it
+    /// is **down** they go through a throwaway one: the outbounds a probe needs
+    /// do not exist until a core is running, but nothing about that requires the
+    /// core to be *the* tunnel. A second instance on its own ports, with no
+    /// system proxy applied and no TUN block, measures the same nodes and
+    /// touches no system state.
+    ///
+    /// This is why the button is live when disconnected — picking a server is
+    /// exactly when the latencies matter, and requiring a connection first made
+    /// the numbers useless for the choice they inform.
     public func pingAll() async {
-        guard state.isConnected, !isPinging, !nodes.isEmpty else { return }
+        guard !isPinging else { return }
+        if nodes.isEmpty { nodes = (try? nodesFromPanelConfig()) ?? [] }
+        guard !nodes.isEmpty else { return }
+
         isPinging = true
         defer { isPinging = false }
 
-        let measured = await api.delays(nodes: nodes.map(\.name))
+        let measured: [String: Int]
+        if state.isConnected {
+            measured = await api.delays(nodes: nodes.map(\.name))
+        } else {
+            measured = await probeWithThrowawayCore()
+        }
+
         for index in nodes.indices {
             nodes[index].latency = measured[nodes[index].name]
         }
         if autoSelect { await applySelection() }
+    }
+
+    /// Starts a core purely to measure, then stops it.
+    ///
+    /// Its ports are offset from the tunnel's so a probe can never collide with
+    /// a core this app is already running, and it shares the tunnel's data
+    /// directory so the geo databases are not downloaded a second time.
+    private func probeWithThrowawayCore() async -> [String: Int] {
+        let port = preferences.controllerPort + 1000
+        let secret = preferences.coreSecret
+        let probeConfig = support.appendingPathComponent("probe.yaml")
+
+        do {
+            let yaml = try MihomoConfig.build(
+                panelYAML: try loadPanelYAML(),
+                overrides: MihomoConfig.Overrides(
+                    controllerPort: port,
+                    secret: secret,
+                    mixedPort: preferences.mixedPort + 1000,
+                    // Never TUN: a probe must not create an interface or touch
+                    // the routing table.
+                    mode: .systemProxy,
+                    splitMode: .all,
+                    dataDirectory: support.appendingPathComponent("core").path
+                )
+            )
+            try yaml.write(to: probeConfig, atomically: true, encoding: .utf8)
+        } catch {
+            lastError = error.localizedDescription
+            return [:]
+        }
+
+        let prober = MihomoProcess(
+            binary: coreBinary,
+            dataDirectory: support.appendingPathComponent("core", isDirectory: true)
+        )
+        do {
+            try prober.start(configPath: probeConfig)
+        } catch {
+            lastError = error.localizedDescription
+            return [:]
+        }
+        defer { prober.stop() }
+
+        let probeAPI = MihomoAPI(port: port, secret: secret)
+        guard await probeAPI.waitUntilReady(timeout: 25) else {
+            lastError = "Could not start a core to measure with"
+            return [:]
+        }
+        return await probeAPI.delays(nodes: nodes.map(\.name))
     }
 
     // MARK: - Settings that change the config
