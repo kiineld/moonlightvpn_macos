@@ -13,6 +13,10 @@ import MoonlightCore
 /// the core to identify the process behind a connection, which only TUN can do,
 /// while domain and address rules work under a system proxy too.
 struct AppsScreen: View {
+    /// Both column headings share this, so the one carrying the search field
+    /// does not sit lower than the one that is only a label.
+    static let headingHeight: CGFloat = 34
+
     @EnvironmentObject var tunnel: TunnelController
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
@@ -114,6 +118,7 @@ struct AppsScreen: View {
                 Spacer()
                 searchField
             }
+            .frame(height: Self.headingHeight)
             .padding(.horizontal, 2)
 
             RowGroup {
@@ -229,7 +234,12 @@ private struct RulesPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Overline(text: L.t(.rules, locale)).padding(.horizontal, 2)
+            HStack {
+                Overline(text: L.t(.rules, locale))
+                Spacer(minLength: 0)
+            }
+            .frame(height: AppsScreen.headingHeight)
+            .padding(.horizontal, 2)
 
             RowGroup {
                 editor
