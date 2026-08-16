@@ -108,7 +108,9 @@ private struct MenuBarContent: View {
                     Task { await tunnel.selectAuto() }
                 }
                 ForEach(tunnel.nodes.prefix(20)) { node in
-                    Button("\(node.flag) \(node.title)") {
+                    // `flag` is optional since a cross-country group has none;
+                    // interpolating it directly printed `Optional("🇸🇪")`.
+                    Button([node.flag, node.title].compactMap { $0 }.joined(separator: " ")) {
                         Task { await tunnel.select(node: node.name) }
                     }
                 }

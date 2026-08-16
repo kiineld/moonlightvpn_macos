@@ -39,12 +39,12 @@ public enum L {
         case remainingCaps, active, expired, trafficOf
 
         // Subscription
-        case plan, planUnknown, traffic, devices
+        case plan, planUnknown, traffic
         case trafficCaps, subscriptionLink, copy, copied
         case refreshSubscription, refreshMetaIdle, refreshMetaSyncing, refreshMetaDone
         case extendSubscription, extendSubtitle
         case addSubscriptionRow, addSubscriptionSubtitle
-        case devicesCaps, thisDevice, slotsFree, validUntil, unlimited
+        case validUntil, unlimited
         case sourceMihomo, sourceClash, sourceShareLinks
 
         // Import
@@ -138,7 +138,6 @@ public enum L {
             case .plan: return "Тариф"
             case .planUnknown: return "Подписка"
             case .traffic: return "ТРАФИК"
-            case .devices: return "УСТРОЙСТВА"
             case .trafficCaps: return "ТРАФИК"
             case .subscriptionLink: return "ССЫЛКА ПОДПИСКИ"
             case .copy: return "Скопировать"
@@ -151,9 +150,6 @@ public enum L {
             case .extendSubtitle: return "Откроется личный кабинет"
             case .addSubscriptionRow: return "Добавить подписку"
             case .addSubscriptionSubtitle: return "Вставить ссылку из бота"
-            case .devicesCaps: return "УСТРОЙСТВА"
-            case .thisDevice: return "это устройство"
-            case .slotsFree: return "Свободно"
             case .validUntil: return "действует до"
             case .unlimited: return "без лимита"
             case .sourceMihomo: return "Конфигурация панели (mihomo)"
@@ -315,7 +311,6 @@ public enum L {
             case .plan: return "Plan"
             case .planUnknown: return "Subscription"
             case .traffic: return "TRAFFIC"
-            case .devices: return "DEVICES"
             case .trafficCaps: return "TRAFFIC"
             case .subscriptionLink: return "SUBSCRIPTION LINK"
             case .copy: return "Copy"
@@ -328,9 +323,6 @@ public enum L {
             case .extendSubtitle: return "Opens your account"
             case .addSubscriptionRow: return "Add a subscription"
             case .addSubscriptionSubtitle: return "Paste a link from the bot"
-            case .devicesCaps: return "DEVICES"
-            case .thisDevice: return "this device"
-            case .slotsFree: return "Free"
             case .validUntil: return "valid until"
             case .unlimited: return "unlimited"
             case .sourceMihomo: return "Panel configuration (mihomo)"

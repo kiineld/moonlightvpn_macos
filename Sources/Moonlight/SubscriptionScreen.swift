@@ -63,7 +63,6 @@ struct SubscriptionScreen: View {
                              Format.days(tunnel.info.daysLeft, locale: locale))
                     heroStat(L.t(.traffic, locale),
                              Format.bytes(tunnel.info.used, locale: locale))
-                    heroStat(L.t(.devices, locale), deviceText)
                 }
                 .padding(.top, 22)
             }
@@ -93,11 +92,6 @@ struct SubscriptionScreen: View {
                 .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var deviceText: String {
-        guard let limit = tunnel.info.deviceLimit else { return "—" }
-        return "\(tunnel.info.devicesUsed ?? 1) / \(limit)"
     }
 
     // MARK: - Traffic
