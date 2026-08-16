@@ -113,7 +113,7 @@ struct SubscriptionScreen: View {
                         .font(.ml(TypeScale.meta, .bold))
                         .foregroundStyle(palette.text2)
                 }
-                QuotaBar(fraction: tunnel.info.usedFraction).padding(.top, 14)
+                QuotaBar(used: tunnel.info.usedFraction).padding(.top, 14)
                 Text(expiryLine)
                     .font(.ml(TypeScale.meta))
                     .foregroundStyle(palette.textMuted)

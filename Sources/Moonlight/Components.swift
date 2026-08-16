@@ -391,11 +391,18 @@ struct ToggleRow: View {
 
 /// A progress bar at the two sizes the design uses (6px in the sidebar, 8px on
 /// the subscription card).
+/// A quota bar. The fill is the portion **used**.
+///
+/// Named `used` rather than `fraction` on purpose: the two bars showing this
+/// same number disagreed for a while, one filling with what was spent and the
+/// other with what was left, because the parameter said neither. A name that
+/// states the direction is what stops that recurring.
 struct QuotaBar: View {
     @Environment(\.palette) private var palette
-    /// Nil means unlimited — the bar shows full rather than empty, because an
-    /// empty bar reads as "nothing left".
-    let fraction: Double?
+    /// Portion of the quota consumed, 0…1. Nil means there is no quota, which
+    /// draws empty — an unlimited plan has used none *of a limit*, and filling
+    /// the bar would read as "all of it".
+    let used: Double?
     var height: CGFloat = 8
 
     var body: some View {
@@ -404,10 +411,11 @@ struct QuotaBar: View {
                 Capsule().fill(palette.surface3)
                 Capsule()
                     .fill(palette.accent)
-                    .frame(width: geometry.size.width * (fraction ?? 1))
+                    .frame(width: geometry.size.width * min(1, max(0, used ?? 0)))
             }
         }
         .frame(height: height)
-        .animation(Motion.paint, value: fraction)
+        .animation(Motion.paint, value: used)
     }
 }
+

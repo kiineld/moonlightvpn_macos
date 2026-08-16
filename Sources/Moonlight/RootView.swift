@@ -200,8 +200,7 @@ private struct Sidebar: View {
             VStack(spacing: 6) {
                 IconView(.sparkles, size: 16)
                     .foregroundStyle(tunnel.info.isActive ? palette.accentInk : palette.danger)
-                QuotaBar(fraction: tunnel.hasSubscription
-                         ? tunnel.info.usedFraction.map { 1 - $0 } : 0, height: 4)
+                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 4)
                     .frame(width: 34)
             }
             .padding(.vertical, 12)
@@ -257,8 +256,7 @@ private struct Sidebar: View {
                     .tracking(TypeScale.trackDisplay * 22)
                     .foregroundStyle(palette.text)
                     .padding(.top, 8)
-                QuotaBar(fraction: tunnel.hasSubscription
-                         ? tunnel.info.usedFraction.map { 1 - $0 } : 0, height: 6)
+                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 6)
                     .padding(.top, 10)
                 Text(quotaLine)
                     .font(.ml(12))
