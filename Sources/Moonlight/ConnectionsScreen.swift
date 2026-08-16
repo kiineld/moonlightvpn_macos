@@ -35,6 +35,7 @@ struct ConnectionsScreen: View {
             controls
             if groups.isEmpty { empty } else { table }
         }
+        .rise(0, page)
         .onAppear(perform: start)
         .onDisappear { poll?.cancel() }
     }
@@ -105,15 +106,22 @@ struct ConnectionsScreen: View {
                             ProcessRow(
                                 group: group,
                                 expanded: expanded == group.process,
-                                locale: locale
-                            ) {
-                                withAnimation(Motion.paint) {
-                                    expanded = expanded == group.process ? nil : group.process
+                                locale: locale,
+                                toggle: {
+                                    withAnimation(Motion.paint) {
+                                        expanded = expanded == group.process ? nil : group.process
+                                    }
+                                },
+                                close: {
+                                    let ids = group.items.map(\.id)
+                                    Task { await tunnel.close(connections: ids) }
                                 }
-                            }
+                            )
                             if expanded == group.process {
                                 ForEach(group.items.sorted { $0.download > $1.download }) { item in
-                                    HostRow(connection: item, locale: locale)
+                                    HostRow(connection: item, locale: locale) {
+                                        Task { await tunnel.close(connections: [item.id]) }
+                                    }
                                 }
                             }
                             palette.hairlineSoft.frame(height: 1)
@@ -135,6 +143,9 @@ struct ConnectionsScreen: View {
             Text(L.t(.colDown, locale)).frame(width: 72, alignment: .trailing)
             Text(L.t(.colUp, locale)).frame(width: 72, alignment: .trailing)
             Text(L.t(.colTime, locale)).frame(maxWidth: .infinity, alignment: .trailing)
+            // Height pinned: a Color constrained only in width is greedy
+            // vertically, which stretched the header row to fill the panel.
+            Color.clear.frame(width: 26, height: 0)
         }
         .font(.ml(10.5, .heavy))
         .tracking(0.08 * 10.5)
@@ -183,8 +194,12 @@ private struct ProcessRow: View {
     let expanded: Bool
     let locale: AppLocale
     let toggle: () -> Void
+    let close: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
+        HStack(spacing: 0) {
         Button(action: toggle) {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
@@ -224,11 +239,42 @@ private struct ProcessRow: View {
                     .font(.mlMono(11.5)).foregroundStyle(palette.textMuted)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.horizontal, 16)
+            .padding(.leading, 16)
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .pressCard()
+
+        CloseButton(hint: L.t(.closeProcess, locale), action: close)
+            .opacity(hovering ? 1 : 0.35)
+        }
+        .padding(.trailing, 16)
+        .onHover { hovering = $0 }
+        .animation(Motion.paint, value: hovering)
+    }
+}
+
+/// Closes what a row stands for — one process's connections, or one connection.
+private struct CloseButton: View {
+    @Environment(\.palette) private var palette
+    let hint: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            IconView(.x, size: 12, strokeWidth: 2.4)
+                .foregroundStyle(hovering ? palette.danger : palette.textMuted)
+                .frame(width: 22, height: 22)
+                .background(hovering ? palette.dangerQuiet : .clear)
+                .clipShape(Circle())
+        }
+        .pressIcon()
+        .frame(width: 26)
+        .onHover { hovering = $0 }
+        .animation(Motion.paint, value: hovering)
+        .help(hint)
     }
 }
 
@@ -236,6 +282,9 @@ private struct HostRow: View {
     @Environment(\.palette) private var palette
     let connection: MihomoAPI.Connection
     let locale: AppLocale
+    let close: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -263,11 +312,15 @@ private struct HostRow: View {
             Text(Format.age(connection.start, locale: locale))
                 .font(.mlMono(11.5)).foregroundStyle(palette.textMuted)
                 .frame(maxWidth: .infinity, alignment: .trailing)
+            CloseButton(hint: L.t(.closeConnection, locale), action: close)
+                .opacity(hovering ? 1 : 0.35)
         }
         .padding(.leading, 36)
         .padding(.trailing, 16)
         .padding(.vertical, 6)
         .background(palette.surface2.opacity(0.5))
+        .onHover { hovering = $0 }
+        .animation(Motion.paint, value: hovering)
     }
 }
 

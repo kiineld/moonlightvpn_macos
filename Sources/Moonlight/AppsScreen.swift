@@ -41,6 +41,7 @@ struct AppsScreen: View {
             .opacity(mode == .all ? 0.45 : 1)
             .animation(Motion.paint, value: mode)
         }
+        .rise(0, page)
         .onAppear(perform: load)
     }
 

@@ -130,8 +130,19 @@ errors) and by text.
 **Connections** polls `/connections` once a second and groups by process, which
 is the question people actually bring to it: is *this program* going through the
 tunnel. Expanding a row shows the hosts behind it, each with the node that
-carried it and the rule that chose. `find-process-mode` is therefore always on —
+carried it and the rule that chose. Any row can be closed — one process's
+connections or a single one — because the core reopens whatever the program
+still wants, so closing reads as "move this app onto the node I just picked"
+rather than as cutting it off. `find-process-mode` is therefore always on —
 it costs a `libproc` lookup per connection, and without it every row reads "—".
+
+### Page changes do not cross-fade
+
+Deliberately. Every transition tried — a crossfade, or `.identity` on the
+removal — keeps the outgoing screen in the hierarchy for the length of the
+animation, so the previous page shows *through* the new one and reads as a
+blink. The page swaps at once and the incoming screen plays its own entrance,
+which starts only after the old one is gone.
 
 ### One core, one controller port
 
@@ -428,10 +439,6 @@ whichever client already holds it.
   the rest timing out as down. So traffic does reach the nodes. What has not
   been exercised is a session left connected with the machine's own traffic
   going through it.
-- **Sidebar hover in light mode is unverified.** It was a white wash on a
-  near-white sidebar; it is now an accent tint with accent-ink text and a
-  hairline. Synthetic pointer events do not reach SwiftUI's tracking areas, so
-  the change is by construction rather than observed.
 - **Not notarised.** See *First launch*.
 - The entrance stagger is attached with `.animation(_:value:)` rather than
   `withAnimation`, so if the animation is dropped the card appears without

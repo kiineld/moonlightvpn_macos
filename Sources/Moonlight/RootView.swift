@@ -59,16 +59,12 @@ struct RootView: View {
         .padding(.top, 20)
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // `id(page)` makes each screen an insertion rather than a mutation, so
-        // the transition actually plays — without it SwiftUI reuses the view and
-        // only the differing subviews animate. It also resets each screen's
-        // local state, which is what re-runs their `onAppear` loads.
+        // No cross-page transition. Any of them — a crossfade, or `.identity`
+        // on the removal — keeps the outgoing screen in the hierarchy for the
+        // length of the animation, so the previous page shows *through* the new
+        // one and reads as a blink. The screens carry their own entrance
+        // instead, which starts only once the old one is already gone.
         .id(page)
-        .transition(.asymmetric(
-            insertion: .opacity.combined(with: .offset(y: 12)),
-            removal: .opacity
-        ))
-        .animation(Motion.enter, value: page)
 
     }
 
@@ -327,7 +323,14 @@ private struct NavItem: View {
             // `surface` is white in light mode, which on the near-white sidebar
             // reads as a smudge rather than a hover. The accent wash is a tint in
             // both themes.
-            .background(active ? palette.accent : (hovering ? palette.accentQuiet : .clear))
+            // The active fill is *not* animated. Animating it crossfaded the
+            // outgoing item's accent against the incoming one's, and the two
+            // translucent fills met as a muddy olive for a few frames — the
+            // blink. A selection that moves instantly cannot smear; only the
+            // hover wash, which never overlaps a selection, is worth easing.
+            .background(active
+                        ? palette.accent
+                        : (hovering ? palette.accentQuiet : .clear))
             .overlay(
                 Capsule().strokeBorder(
                     hovering && !active ? palette.accentLine.opacity(0.5) : .clear,
@@ -339,8 +342,7 @@ private struct NavItem: View {
         }
         .pressCard()
         .onHover { hovering = $0 }
-        .animation(Motion.paint, value: active)
-        .animation(Motion.paint, value: hovering)
+        .animation(hovering ? Motion.paint : nil, value: hovering)
         .help(collapsed ? title : "")
     }
 }

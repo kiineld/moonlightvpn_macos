@@ -564,6 +564,28 @@ public final class TunnelController: ObservableObject {
         (try? await api.connections()) ?? []
     }
 
+    /// Closes a specific set — one process's connections, or a single one.
+    ///
+    /// The core reopens whatever the program still wants, so this reads as
+    /// "move this app onto the node I just picked" rather than as cutting it
+    /// off: existing connections would otherwise stay on the old node until
+    /// they aged out on their own.
+    public func close(connections ids: [String]) async {
+        guard !ids.isEmpty else { return }
+        var closed = 0
+        for id in ids {
+            do {
+                try await api.close(connection: id)
+                closed += 1
+            } catch {
+                // A connection that closed on its own between the poll and the
+                // click is the common case here, not a failure worth surfacing.
+                continue
+            }
+        }
+        LogStore.shared.client("Closed \(closed) connection(s)")
+    }
+
     /// Closes them all. The core reopens whatever is still wanted, which is how
     /// traffic is forced onto a node that was just selected instead of waiting
     /// for existing connections to age out.

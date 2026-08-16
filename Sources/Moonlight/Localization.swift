@@ -77,7 +77,8 @@ public enum L {
         case logTime, logLevel, logSource, logMessage
         // Connections
         case navConnections, titleConnections, subtitleConnections
-        case activeConnections, closeAll, noConnections, connectionsNeedTunnel
+        case activeConnections, closeAll, closeProcess, closeConnection
+        case noConnections, connectionsNeedTunnel
         case colProcess, colChain, colRule, colNetwork, colDown, colUp, colTime
         // Updates
         case updateChecking, updateUpToDate, updateAvailable, updateDownloading
@@ -237,6 +238,8 @@ public enum L {
             case .subtitleConnections: return "Какие программы и куда идут прямо сейчас"
             case .activeConnections: return "Активно"
             case .closeAll: return "Закрыть все"
+            case .closeProcess: return "Закрыть подключения этой программы"
+            case .closeConnection: return "Закрыть это подключение"
             case .noConnections: return "Нет активных подключений"
             case .connectionsNeedTunnel: return "Подключения появятся, когда туннель заработает"
             case .colProcess: return "ПРОЦЕСС"
@@ -410,6 +413,8 @@ public enum L {
             case .subtitleConnections: return "Which programs are going where, right now"
             case .activeConnections: return "Active"
             case .closeAll: return "Close all"
+            case .closeProcess: return "Close this program's connections"
+            case .closeConnection: return "Close this connection"
             case .noConnections: return "No active connections"
             case .connectionsNeedTunnel: return "Connections appear once the tunnel is carrying traffic"
             case .colProcess: return "PROCESS"

@@ -19,7 +19,7 @@ struct SettingsScreen: View {
         // The design's content area scrolls; settings is the screen that
         // overflows first on a short window.
         ScrollView {
-            columns.padding(.bottom, 8)
+            columns.padding(.bottom, 8).rise(0, page)
         }
         .scrollIndicators(.never)
     }
