@@ -656,6 +656,14 @@ public final class TunnelController: ObservableObject {
             preferences.proxySnapshot = nil
         }
 
+        // The same for the unprivileged core: a child is reparented to launchd
+        // when its parent dies, so a crash, a force-quit or an in-app update
+        // leaves one running and holding the controller port.
+        let reaped = MihomoProcess.reapOrphans(dataDirectory: support)
+        if !reaped.isEmpty {
+            LogStore.shared.client("Stopped \(reaped.count) orphaned core(s) from a previous run")
+        }
+
         // A privileged core outlives the app that started it — it is a root
         // daemon's child, not ours. Left running it holds the controller port,
         // so the core this session starts cannot bind it and every API call

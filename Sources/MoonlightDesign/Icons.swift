@@ -24,6 +24,8 @@ public enum Icon: String, CaseIterable, Sendable {
     case minus = "minus"
     case monitor = "monitor"
     case moon = "moon"
+    case panelLeftClose = "panel-left-close"
+    case panelLeftOpen = "panel-left-open"
     case play = "play"
     case plus = "plus"
     case power = "power"
@@ -62,6 +64,8 @@ public enum Icon: String, CaseIterable, Sendable {
         case .minus: return ["M5 12h14"]
         case .monitor: return ["M4.0 3.0H20.0a2.0 2.0 0 0 1 2.0 2.0V15.0a2.0 2.0 0 0 1 -2.0 2.0H4.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M8.0 21.0L16.0 21.0", "M12.0 17.0L12.0 21.0"]
         case .moon: return ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"]
+        case .panelLeftClose: return ["M5.0 3.0H19.0a2.0 2.0 0 0 1 2.0 2.0V19.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M9 3v18", "m16 15-3-3 3-3"]
+        case .panelLeftOpen: return ["M5.0 3.0H19.0a2.0 2.0 0 0 1 2.0 2.0V19.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M9 3v18", "m14 9 3 3-3 3"]
         case .play: return ["M6 3L20 12L6 21L6 3Z"]
         case .plus: return ["M5 12h14", "M12 5v14"]
         case .power: return ["M12 2v10", "M18.4 6.6a9 9 0 1 1-12.77.04"]

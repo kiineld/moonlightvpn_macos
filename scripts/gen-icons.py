@@ -32,6 +32,7 @@ NAMES = {
     "shield": "shield", "trash-2": "trash2", "search": "search",
     "circle-alert": "circleAlert", "loader-circle": "loaderCircle",
     "download": "download", "play": "play",
+    "panel-left-close": "panelLeftClose", "panel-left-open": "panelLeftOpen",
 }
 
 

@@ -164,30 +164,49 @@ private struct Sidebar: View {
         .animation(Motion.slide, value: collapsed)
     }
 
-    /// The wordmark doubles as the collapse control, the way a sidebar's own
-    /// header usually does — a separate button would need a home of its own at
-    /// 72pt wide.
+    /// The header carries its own collapse control.
+    ///
+    /// The wordmark used to be the toggle, which worked but advertised nothing —
+    /// a control with no affordance is a control nobody finds. The panel icon is
+    /// the same one every sidebar on the platform uses, so it needs no
+    /// explaining.
     private var header: some View {
+        HStack(spacing: 10) {
+            LogoTile(size: 32, radius: 10)
+            if !collapsed {
+                Text("moonlight")
+                    .font(.mlDisplay(17, .bold))
+                    .tracking(-0.025 * 17)
+                    .foregroundStyle(palette.text)
+                    .fixedSize()
+                Spacer(minLength: 0)
+                collapseButton
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+        .padding(.horizontal, collapsed ? 0 : 6)
+        .padding(.bottom, collapsed ? 8 : 14)
+        .overlay(alignment: .bottom) {
+            // Collapsed there is no room beside the logo, so the control takes
+            // its own line under it.
+            if collapsed {
+                collapseButton.offset(y: 34)
+            }
+        }
+        .padding(.bottom, collapsed ? 34 : 0)
+    }
+
+    private var collapseButton: some View {
         Button {
             settings.sidebarCollapsed.toggle()
         } label: {
-            HStack(spacing: 10) {
-                LogoTile(size: 32, radius: 10)
-                if !collapsed {
-                    Text("moonlight")
-                        .font(.mlDisplay(17, .bold))
-                        .tracking(-0.025 * 17)
-                        .foregroundStyle(palette.text)
-                        .fixedSize()
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
-            .padding(.horizontal, collapsed ? 0 : 6)
-            .padding(.bottom, 14)
-            .contentShape(Rectangle())
+            IconView(collapsed ? .panelLeftOpen : .panelLeftClose, size: 17)
+                .foregroundStyle(palette.textMuted)
+                .frame(width: 30, height: 30)
+                .background(palette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
-        .pressCard()
+        .pressIcon()
         .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
     }
 

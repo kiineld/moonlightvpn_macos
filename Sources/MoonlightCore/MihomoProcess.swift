@@ -85,6 +85,56 @@ public final class MihomoProcess: @unchecked Sendable {
         return logLines.joined(separator: "\n")
     }
 
+    /// Kills cores this app started that outlived the app itself.
+    ///
+    /// A child process is **not** killed when its parent dies — it is reparented
+    /// to launchd and carries on. So a force-quit, a crash, or an in-app update
+    /// leaves a core running, and because it still holds the controller port the
+    /// next launch's core cannot bind it. Every API call then addresses the old
+    /// core instead: stale nodes, stale connections, and traffic still flowing
+    /// while the window says it is disconnected.
+    ///
+    /// Identified by the **data directory** on its command line, not by the
+    /// executable path: the app moves — an update replaces the bundle, and a
+    /// build run from a checkout lives elsewhere than `/Applications` — while
+    /// `~/Library/Application Support/Moonlight` is the same for every install.
+    /// It also cannot match another client's mihomo, which has its own.
+    @discardableResult
+    public static func reapOrphans(dataDirectory: URL) -> [pid_t] {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", "mihomo.*\(dataDirectory.path)"]
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
+        pgrep.standardError = Pipe()
+
+        guard (try? pgrep.run()) != nil else { return [] }
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        pgrep.waitUntilExit()
+
+        let mine = ProcessInfo.processInfo.processIdentifier
+        let found = (String(data: output, encoding: .utf8) ?? "")
+            .split(whereSeparator: \.isNewline)
+            .compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { $0 != mine && parent(of: $0) != mine }
+
+        for pid in found {
+            // SIGTERM so the core tears down its own interface and routes; a
+            // SIGKILL would strand them.
+            kill(pid, SIGTERM)
+        }
+        return found
+    }
+
+    /// The parent of a pid, so cores this very process started are left alone.
+    private static func parent(of pid: pid_t) -> pid_t {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return -1 }
+        return info.kp_eproc.e_ppid
+    }
+
     /// Validates a config without starting anything.
     ///
     /// Worth doing before every start: `mihomo -t` reports the offending key and
