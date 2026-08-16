@@ -46,6 +46,22 @@ public enum AppInventory {
         })
     }
 
+    /// The `.app` bundle a running executable belongs to.
+    ///
+    /// mihomo reports the executable — `/Applications/Telegram.app/Contents/
+    /// MacOS/Telegram` — and asking the workspace for *that* file's icon gets
+    /// the generic Unix-executable one, since the icon belongs to the bundle
+    /// wrapping it. Walking up to the `.app` is what produces the real icon.
+    public static func bundlePath(forExecutable path: String) -> String? {
+        guard !path.isEmpty else { return nil }
+        var url = URL(fileURLWithPath: path)
+        while url.pathComponents.count > 1 {
+            if url.pathExtension == "app" { return url.path }
+            url.deleteLastPathComponent()
+        }
+        return nil
+    }
+
     static func describe(_ path: String) -> AppEntry? {
         guard let bundle = Bundle(path: path) else { return nil }
 

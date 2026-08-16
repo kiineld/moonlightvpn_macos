@@ -325,9 +325,19 @@ renderer only parses `d` strings.
 Fonts are Onest (UI/body) and Unbounded (display) as variable TTFs from Google
 Fonts — the design ships `woff2`, which Core Text cannot register.
 
-The connect dial's ring shows **how much traffic quota is left**, so a healthy
-subscription reads as a nearly full ring and drains with use. With no quota to
-report, a connected tunnel shows a full ring.
+The connect dial's ring is **full when connected** and sweeps closed as it
+connects. It used to show remaining quota, which meant a perfectly healthy
+tunnel drew a ring with a gap in it — and a gap in a status ring reads as a
+fault, not as "you have used some traffic". The quota has a bar of its own in
+the sidebar, where a partial fill is the point.
+
+The two figures under the dial are what is **left** — traffic and time — rather
+than what the session has spent. Session byte counters are the least actionable
+numbers on the screen; how much plan remains is what people open the app to
+check. Time switches to hours under a day, because nine hours reading "1 день"
+is the kind of rounding that loses someone a day of service.
+
+The sidebar collapses to a 72pt icon rail; the wordmark is the toggle.
 
 | | |
 |---|---|
@@ -354,7 +364,7 @@ Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
 swift run moonlight-tests
 ```
 
-217 checks. A plain executable rather than XCTest, because XCTest ships with
+227 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`

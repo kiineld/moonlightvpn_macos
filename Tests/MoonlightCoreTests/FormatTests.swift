@@ -53,3 +53,29 @@ func formatTests() {
         Check.equal(Format.latency(24), "24 ms", "latency")
     }
 }
+
+/// What is left, in the unit that does not round a plan away.
+func timeLeftTests() {
+    Check.suite("Format · time left") {
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(86_400 * 11.5), locale: .ru),
+                    "12 дней", "over a day reads in days")
+        // Nine hours reading "1 день" is the rounding that loses someone a day.
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600 * 9), locale: .ru),
+                    "9 часов", "under a day switches to hours")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600 * 2), locale: .ru),
+                    "2 часа", "ru paucal for hours")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600 * 21), locale: .ru),
+                    "21 час", "ru singular for 21")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600 * 11), locale: .ru),
+                    "11 часов", "ru teens are plural")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(60), locale: .ru),
+                    "1 час", "the last minutes still read as an hour, never zero")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(-60), locale: .ru),
+                    "0 дней", "an expired plan is zero days")
+        Check.equal(Format.timeLeft(nil, locale: .ru), "без срока", "no expiry")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600 * 5), locale: .en),
+                    "5 hours", "en hours")
+        Check.equal(Format.timeLeft(Date().addingTimeInterval(3600), locale: .en),
+                    "1 hour", "en singular")
+    }
+}

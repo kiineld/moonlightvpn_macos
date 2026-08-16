@@ -129,45 +129,87 @@ private struct TitleBar: View {
 
 private struct Sidebar: View {
     @EnvironmentObject var tunnel: TunnelController
+    @EnvironmentObject var settings: AppSettings
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
 
+    private var collapsed: Bool { settings.sidebarCollapsed }
+
     var body: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                LogoTile(size: 32, radius: 10)
-                Text("moonlight")
-                    .font(.mlDisplay(17, .bold))
-                    .tracking(-0.025 * 17)
-                    .foregroundStyle(palette.text)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 6)
-            .padding(.bottom, 14)
+            header
 
             NavItem(icon: .power, title: L.t(.navConnect, locale),
-                    active: page == .connect) { page = .connect }
+                    active: page == .connect, collapsed: collapsed) { page = .connect }
             NavItem(icon: .sparkles, title: L.t(.navSubscription, locale),
-                    active: page == .subscription || page == .importSubscription) {
-                page = .subscription
-            }
+                    active: page == .subscription || page == .importSubscription,
+                    collapsed: collapsed) { page = .subscription }
             NavItem(icon: .layers, title: L.t(.navApps, locale),
-                    active: page == .apps) { page = .apps }
+                    active: page == .apps, collapsed: collapsed) { page = .apps }
             NavItem(icon: .activity, title: L.t(.navConnections, locale),
-                    active: page == .connections) { page = .connections }
+                    active: page == .connections, collapsed: collapsed) { page = .connections }
             NavItem(icon: .settings, title: L.t(.navSettings, locale),
-                    active: page == .settings) { page = .settings }
+                    active: page == .settings, collapsed: collapsed) { page = .settings }
 
             Spacer()
-            quotaCard
+            if collapsed { collapsedQuota } else { quotaCard }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, collapsed ? 10 : 14)
         .padding(.top, 18)
         .padding(.bottom, 16)
-        .frame(width: 236)
+        .frame(width: collapsed ? 72 : 236)
         .background(palette.bgDeep)
         .overlay(alignment: .trailing) { palette.hairline.frame(width: 1) }
+        .animation(Motion.slide, value: collapsed)
+    }
+
+    /// The wordmark doubles as the collapse control, the way a sidebar's own
+    /// header usually does — a separate button would need a home of its own at
+    /// 72pt wide.
+    private var header: some View {
+        Button {
+            settings.sidebarCollapsed.toggle()
+        } label: {
+            HStack(spacing: 10) {
+                LogoTile(size: 32, radius: 10)
+                if !collapsed {
+                    Text("moonlight")
+                        .font(.mlDisplay(17, .bold))
+                        .tracking(-0.025 * 17)
+                        .foregroundStyle(palette.text)
+                        .fixedSize()
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+            .padding(.horizontal, collapsed ? 0 : 6)
+            .padding(.bottom, 14)
+            .contentShape(Rectangle())
+        }
+        .pressCard()
+        .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
+    }
+
+    /// At 72pt there is no room for a card, but the plan still has to be
+    /// glanceable — so it becomes the bar alone.
+    private var collapsedQuota: some View {
+        Button {
+            page = .subscription
+        } label: {
+            VStack(spacing: 6) {
+                IconView(.sparkles, size: 16)
+                    .foregroundStyle(tunnel.info.isActive ? palette.accentInk : palette.danger)
+                QuotaBar(fraction: tunnel.hasSubscription
+                         ? tunnel.info.usedFraction.map { 1 - $0 } : 0, height: 4)
+                    .frame(width: 34)
+            }
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .pressCard()
     }
 
     /// With no subscription there is nothing to be unknown *about*, so the
@@ -243,6 +285,7 @@ private struct NavItem: View {
     let icon: Icon
     let title: String
     let active: Bool
+    var collapsed = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -251,8 +294,10 @@ private struct NavItem: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 IconView(icon, size: 19)
-                Text(title).font(.ml(14, .heavy))
-                Spacer(minLength: 0)
+                if !collapsed {
+                    Text(title).font(.ml(14, .heavy)).fixedSize()
+                    Spacer(minLength: 0)
+                }
             }
             // Hover shifts the label to accent ink as well as washing the
             // background: on the near-white light sidebar a background tint
@@ -279,6 +324,7 @@ private struct NavItem: View {
         .onHover { hovering = $0 }
         .animation(Motion.paint, value: active)
         .animation(Motion.paint, value: hovering)
+        .help(collapsed ? title : "")
     }
 }
 

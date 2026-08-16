@@ -27,7 +27,7 @@ struct ConnectScreen: View {
                 Spacer(minLength: 0)
                 DialButton(
                     state: tunnel.state,
-                    fraction: quotaRemaining,
+                    fraction: ringFraction,
                     statusLabel: statusLabel,
                     bigLabel: bigLabel,
                     timer: Format.duration(tunnel.uptime),
@@ -60,15 +60,14 @@ struct ConnectScreen: View {
         }
     }
 
+    /// What is *left*, not what has been spent. A session's byte counters are
+    /// the least actionable numbers on the screen; how much plan remains is the
+    /// thing people open the app to check.
     private var counters: some View {
         HStack(spacing: 0) {
-            counter(L.t(.downloaded, locale), Format.bytes(tunnel.sessionDown, locale: locale))
+            counter(L.t(.trafficLeft, locale), trafficLeft)
             divider
-            counter(L.t(.uploaded, locale), Format.bytes(tunnel.sessionUp, locale: locale))
-            divider
-            counter(L.t(.remaining, locale), tunnel.hasSubscription
-                    ? Format.days(tunnel.info.daysLeft, locale: locale)
-                    : Format.days(0, locale: locale))
+            counter(L.t(.timeLeft, locale), timeLeft)
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 6)
@@ -94,14 +93,25 @@ struct ConnectScreen: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The ring shows how much of the traffic quota is **left**, so a healthy
-    /// subscription reads as a nearly full ring and drains with use. With no
-    /// quota to report, a connected tunnel shows a full ring rather than an
-    /// empty one.
-    private var quotaRemaining: Double {
-        guard tunnel.state.isConnected else { return 0 }
-        guard let used = tunnel.info.usedFraction else { return 1 }
-        return 1 - used
+    /// The ring is **full when connected**, and sweeps closed as it connects.
+    ///
+    /// It used to show remaining quota, which meant a perfectly healthy tunnel
+    /// drew a ring with a gap in it — and a gap in a status ring reads as a
+    /// fault, not as "you have used some traffic". The quota already has a bar
+    /// of its own in the sidebar, where a partial fill is the point.
+    private var ringFraction: Double {
+        tunnel.state.isConnected ? 1 : 0
+    }
+
+    private var trafficLeft: String {
+        guard tunnel.hasSubscription else { return Format.bytes(0, locale: locale) }
+        guard let total = tunnel.info.total else { return L.t(.unlimited, locale) }
+        return Format.bytes(max(0, total - (tunnel.info.used ?? 0)), locale: locale)
+    }
+
+    private var timeLeft: String {
+        guard tunnel.hasSubscription else { return Format.days(0, locale: locale) }
+        return Format.timeLeft(tunnel.info.expire, locale: locale)
     }
 
     private var statusLabel: String {

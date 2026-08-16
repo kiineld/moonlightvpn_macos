@@ -17,6 +17,7 @@ public enum L {
     public enum Key {
         // Navigation and page headers
         case navConnect, navSubscription, navApps, navSettings
+        case collapseSidebar, expandSidebar
         case titleConnect, subtitleConnect
         case titleSubscription, subtitleSubscription
         case titleApps, subtitleApps
@@ -30,7 +31,7 @@ public enum L {
         case secured, disconnected, connecting, disconnecting
         case bigConnect, bigConnected
         case hintConnect, hintDisconnect
-        case downloaded, uploaded, remaining
+        case downloaded, uploaded, remaining, trafficLeft, timeLeft
         case servers, nodesCount, auto, autoSubtitle, autoPicked
         case noSubscription, noSubscriptionHint, addSubscription
 
@@ -88,6 +89,8 @@ public enum L {
             case .navSubscription: return "Подписка"
             case .navApps: return "Приложения"
             case .navSettings: return "Настройки"
+            case .collapseSidebar: return "Свернуть меню"
+            case .expandSidebar: return "Развернуть меню"
             case .titleConnect: return "Подключение"
             case .subtitleConnect: return "Выберите узел и включите туннель"
             case .titleSubscription: return "Подписка"
@@ -116,6 +119,8 @@ public enum L {
             case .downloaded: return "СКАЧАНО"
             case .uploaded: return "ОТДАНО"
             case .remaining: return "ОСТАЛОСЬ"
+            case .trafficLeft: return "ТРАФИКА"
+            case .timeLeft: return "ОСТАЛОСЬ"
             case .servers: return "СЕРВЕРЫ"
             case .nodesCount: return "узлов"
             case .auto: return "Авто"
@@ -261,6 +266,8 @@ public enum L {
             case .navSubscription: return "Subscription"
             case .navApps: return "Apps"
             case .navSettings: return "Settings"
+            case .collapseSidebar: return "Collapse the sidebar"
+            case .expandSidebar: return "Expand the sidebar"
             case .titleConnect: return "Connection"
             case .subtitleConnect: return "Pick a node and switch the tunnel on"
             case .titleSubscription: return "Subscription"
@@ -289,6 +296,8 @@ public enum L {
             case .downloaded: return "DOWNLOADED"
             case .uploaded: return "UPLOADED"
             case .remaining: return "REMAINING"
+            case .trafficLeft: return "TRAFFIC LEFT"
+            case .timeLeft: return "TIME LEFT"
             case .servers: return "SERVERS"
             case .nodesCount: return "nodes"
             case .auto: return "Auto"

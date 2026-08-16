@@ -56,6 +56,31 @@ public enum Format {
         return "\(count) \(word)"
     }
 
+    /// Days left, or hours once it is under a day — "12 дней", "7 часов".
+    ///
+    /// A plan with nine hours on it reading "1 день" is the kind of rounding
+    /// that loses someone a day of service.
+    public static func timeLeft(_ expire: Date?, locale: AppLocale = .ru) -> String {
+        guard let expire else { return locale == .ru ? "без срока" : "no expiry" }
+        let seconds = expire.timeIntervalSinceNow
+        guard seconds > 0 else { return days(0, locale: locale) }
+        if seconds >= 86_400 { return days(Int(ceil(seconds / 86_400)), locale: locale) }
+        return hours(max(1, Int(ceil(seconds / 3600))), locale: locale)
+    }
+
+    /// Russian's three-way plural again, for hours.
+    public static func hours(_ count: Int, locale: AppLocale = .ru) -> String {
+        if locale == .en { return "\(count) hour\(count == 1 ? "" : "s")" }
+        let mod100 = count % 100
+        let mod10 = count % 10
+        let word: String
+        if (11...14).contains(mod100) { word = "часов" }
+        else if mod10 == 1 { word = "час" }
+        else if (2...4).contains(mod10) { word = "часа" }
+        else { word = "часов" }
+        return "\(count) \(word)"
+    }
+
     /// "24,8 из 100 ГБ" / "24.8 of 100 GB". An unlimited plan says so rather
     /// than showing a denominator it does not have.
     public static func quota(used: Int64?, total: Int64?, locale: AppLocale = .ru) -> String {

@@ -29,6 +29,7 @@ public final class Preferences: @unchecked Sendable {
         static let splitRules = "splitRules"
         static let launchAtLogin = "launchAtLogin"
         static let menuBarIcon = "menuBarIcon"
+        static let sidebarCollapsed = "sidebarCollapsed"
         static let autoConnect = "autoConnect"
         static let notifications = "notifications"
         static let controllerPort = "controllerPort"
@@ -122,6 +123,11 @@ public final class Preferences: @unchecked Sendable {
     public var menuBarIcon: Bool {
         get { defaults.object(forKey: Key.menuBarIcon) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.menuBarIcon) }
+    }
+
+    public var sidebarCollapsed: Bool {
+        get { defaults.bool(forKey: Key.sidebarCollapsed) }
+        set { defaults.set(newValue, forKey: Key.sidebarCollapsed) }
     }
 
     public var autoConnect: Bool {

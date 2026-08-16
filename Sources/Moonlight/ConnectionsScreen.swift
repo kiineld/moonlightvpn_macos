@@ -195,10 +195,7 @@ private struct ProcessRow: View {
                         .padding(.vertical, 2)
                         .background(palette.surface2)
                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    if !group.path.isEmpty {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: group.path))
-                            .resizable().frame(width: 16, height: 16)
-                    }
+                    ProcessIcon(path: group.path)
                     Text(group.process)
                         .font(.ml(12.5, .bold))
                         .foregroundStyle(palette.text)
@@ -271,6 +268,26 @@ private struct HostRow: View {
         .padding(.trailing, 16)
         .padding(.vertical, 6)
         .background(palette.surface2.opacity(0.5))
+    }
+}
+
+/// A process's own icon, or a neutral glyph when it has none — a daemon like
+/// `netsimd` is not an app and has no bundle to take one from.
+private struct ProcessIcon: View {
+    @Environment(\.palette) private var palette
+    let path: String
+
+    var body: some View {
+        if let bundle = AppInventory.bundlePath(forExecutable: path) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: bundle))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 17, height: 17)
+        } else {
+            IconView(.settings, size: 13)
+                .foregroundStyle(palette.textMuted)
+                .frame(width: 17, height: 17)
+        }
     }
 }
 

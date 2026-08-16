@@ -17,6 +17,9 @@ final class AppSettings: ObservableObject {
     @Published var notifications: Bool { didSet { preferences.notifications = notifications } }
     @Published var autoConnect: Bool { didSet { preferences.autoConnect = autoConnect } }
     @Published var menuBarIcon: Bool { didSet { preferences.menuBarIcon = menuBarIcon } }
+    @Published var sidebarCollapsed: Bool {
+        didSet { preferences.sidebarCollapsed = sidebarCollapsed }
+    }
 
     @Published var launchAtLogin: Bool {
         didSet {
@@ -40,6 +43,7 @@ final class AppSettings: ObservableObject {
         notifications = preferences.notifications
         autoConnect = preferences.autoConnect
         menuBarIcon = preferences.menuBarIcon
+        sidebarCollapsed = preferences.sidebarCollapsed
         launchAtLogin = preferences.launchAtLogin
     }
 

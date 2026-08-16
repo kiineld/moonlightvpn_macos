@@ -180,7 +180,13 @@ struct MLToggle: View {
     }
 }
 
-/// The segmented pill: an accent fill slides between options.
+/// The segmented pill: one accent capsule slides between the options.
+///
+/// The capsule is a single view positioned by index rather than a background on
+/// whichever option is active paired with `matchedGeometryEffect`. That pairing
+/// animates only when SwiftUI matches the two across the same transaction, which
+/// it does not do reliably when the options are rebuilt by a `ForEach` — the
+/// fill jumped instead of sliding. One view that moves cannot jump.
 struct SegmentedPill<Value: Hashable>: View {
     @Environment(\.palette) private var palette
     @Binding var selection: Value
@@ -188,38 +194,44 @@ struct SegmentedPill<Value: Hashable>: View {
     var height: CGFloat = 34
     var onSelect: ((Value) -> Void)?
 
+    private var index: Int {
+        options.firstIndex { $0.value == selection } ?? 0
+    }
+
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(options, id: \.value) { option in
-                let active = option.value == selection
-                Button {
-                    selection = option.value
-                    onSelect?(option.value)
-                } label: {
-                    Text(option.label)
-                        .font(.ml(12.5, .heavy))
-                        .foregroundStyle(active ? palette.textOnAccent : palette.textMuted)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: height)
-                        .background {
-                            if active {
-                                Capsule()
-                                    .fill(palette.accent)
-                                    .matchedGeometryEffect(id: "pill", in: namespace)
-                            }
+        GeometryReader { geometry in
+            let width = geometry.size.width / CGFloat(max(1, options.count))
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(palette.accent)
+                    .frame(width: width, height: height)
+                    .offset(x: width * CGFloat(index))
+
+                HStack(spacing: 0) {
+                    ForEach(options, id: \.value) { option in
+                        let active = option.value == selection
+                        Button {
+                            selection = option.value
+                            onSelect?(option.value)
+                        } label: {
+                            Text(option.label)
+                                .font(.ml(12.5, .heavy))
+                                .foregroundStyle(active ? palette.textOnAccent : palette.textMuted)
+                                .frame(width: width, height: height)
+                                .contentShape(Capsule())
                         }
+                        .buttonStyle(.plain)
+                        .pointerCursor()
+                    }
                 }
-                .buttonStyle(.plain)
-                .pointerCursor()
             }
+            .animation(Motion.slide, value: index)
         }
+        .frame(height: height)
         .padding(3)
         .background(palette.surface2)
         .clipShape(Capsule())
-        .animation(Motion.slide, value: selection)
     }
-
-    @Namespace private var namespace
 }
 
 /// A header action: hairline pill, accent-ink label, border lifts on hover.
