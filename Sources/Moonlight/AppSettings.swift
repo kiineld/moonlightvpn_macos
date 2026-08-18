@@ -55,19 +55,62 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// `SMAppService` is the modern registration and needs no login item plist,
-    /// but it is macOS 13+ only — which is this app's floor anyway.
+    /// Registers or removes the login item.
+    ///
+    /// `SMAppService` is the modern, plist-free way to do this and is macOS 13+.
+    /// On Monterey the equivalent is a LaunchAgent the app writes itself —
+    /// `SMLoginItemSetEnabled` would need a separate helper bundle, which is far
+    /// more machinery for the same result.
     private func applyLaunchAtLogin() {
-        do {
-            if launchAtLogin {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
+        if #available(macOS 13.0, *) {
+            do {
+                if launchAtLogin {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+                return
+            } catch {
+                // Registration fails for an app running outside /Applications,
+                // which is normal during development.
+                NSLog("launch-at-login: \(error.localizedDescription)")
+                return
             }
+        }
+        applyLaunchAgent()
+    }
+
+    /// The macOS 12 path: a LaunchAgent in the user's own directory.
+    private func applyLaunchAgent() {
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        let plist = directory.appendingPathComponent("\(Self.launchAgentLabel).plist")
+
+        guard launchAtLogin else {
+            _ = try? FileManager.default.removeItem(at: plist)
+            return
+        }
+
+        let executable = Bundle.main.executableURL?.path ?? ""
+        let document: [String: Any] = [
+            "Label": Self.launchAgentLabel,
+            "ProgramArguments": [executable],
+            "RunAtLoad": true,
+            // Not KeepAlive: this starts the app at login, it does not resurrect
+            // an app the user deliberately quit.
+            "ProcessType": "Interactive",
+        ]
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = try PropertyListSerialization.data(
+                fromPropertyList: document, format: .xml, options: 0
+            )
+            try data.write(to: plist)
         } catch {
-            // Registration fails for an app running outside /Applications, which
-            // is normal during development and not worth an alert.
             NSLog("launch-at-login: \(error.localizedDescription)")
         }
     }
+
+    private static let launchAgentLabel = "vpn.moonlight.desktop.login"
+
 }

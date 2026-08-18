@@ -95,10 +95,3 @@ public enum TypeScale {
     public static let trackTight: CGFloat = -0.01
     public static let trackOverline: CGFloat = 0.1
 }
-
-public extension View {
-    /// Tracking in `em`, the unit the source tokens use.
-    func tracking(em: CGFloat, size: CGFloat) -> some View {
-        tracking(em * size)
-    }
-}

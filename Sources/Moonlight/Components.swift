@@ -18,6 +18,19 @@ struct PressScale: ButtonStyle {
 }
 
 extension View {
+    /// `scrollIndicators` is macOS 13+. On 12 the scroller keeps its default
+    /// behaviour, which is the same overlay style — the modifier only exists to
+    /// hide it, and a visible scroller is a far smaller cost than dropping
+    /// Monterey.
+    @ViewBuilder
+    func mlScrollIndicators(hidden: Bool) -> some View {
+        if #available(macOS 13.0, *) {
+            scrollIndicators(hidden ? .never : .visible)
+        } else {
+            self
+        }
+    }
+
     /// The pointing hand on hover.
     ///
     /// AppKit does not infer this from a SwiftUI `Button` the way the web does
@@ -117,6 +130,27 @@ struct RowDivider: View {
         palette.hairlineSoft
             .frame(height: 1)
             .padding(.leading, leading)
+    }
+}
+
+/// A table column heading.
+///
+/// The tracking lives on the `Text`, not on the row: `View.tracking` is macOS
+/// 13+, while `Text.tracking` goes back much further, and a header row is an
+/// `HStack` of several texts.
+struct ColumnHeading: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    var width: CGFloat?
+    var alignment: Alignment = .leading
+
+    var body: some View {
+        Text(text)
+            .font(.ml(10.5, .heavy))
+            .tracking(0.08 * 10.5)
+            .foregroundStyle(palette.textMuted)
+            .frame(width: width, alignment: alignment)
+            .frame(maxWidth: width == nil ? .infinity : nil, alignment: alignment)
     }
 }
 

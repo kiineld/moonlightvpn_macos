@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Moonlight",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v12)],
     products: [
         .executable(name: "Moonlight", targets: ["Moonlight"]),
         .executable(name: "moonlight-helper", targets: ["MoonlightHelper"]),

@@ -128,7 +128,7 @@ struct ConnectionsScreen: View {
                         }
                     }
                 }
-                .scrollIndicators(.visible)
+                .mlScrollIndicators(hidden: false)
             }
         }
         .frame(maxHeight: .infinity)
@@ -136,20 +136,17 @@ struct ConnectionsScreen: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(L.t(.colProcess, locale)).frame(width: 176, alignment: .leading)
-            Text(L.t(.colChain, locale)).frame(width: 128, alignment: .leading)
-            Text(L.t(.colRule, locale)).frame(width: 66, alignment: .leading)
-            Text(L.t(.colNetwork, locale)).frame(width: 66, alignment: .leading)
-            Text(L.t(.colDown, locale)).frame(width: 72, alignment: .trailing)
-            Text(L.t(.colUp, locale)).frame(width: 72, alignment: .trailing)
-            Text(L.t(.colTime, locale)).frame(maxWidth: .infinity, alignment: .trailing)
+            ColumnHeading(text: L.t(.colProcess, locale), width: 176)
+            ColumnHeading(text: L.t(.colChain, locale), width: 128)
+            ColumnHeading(text: L.t(.colRule, locale), width: 74)
+            ColumnHeading(text: L.t(.colNetwork, locale), width: 66)
+            ColumnHeading(text: L.t(.colDown, locale), width: 72, alignment: .trailing)
+            ColumnHeading(text: L.t(.colUp, locale), width: 72, alignment: .trailing)
+            ColumnHeading(text: L.t(.colTime, locale), alignment: .trailing)
             // Height pinned: a Color constrained only in width is greedy
             // vertically, which stretched the header row to fill the panel.
             Color.clear.frame(width: 26, height: 0)
         }
-        .font(.ml(10.5, .heavy))
-        .tracking(0.08 * 10.5)
-        .foregroundStyle(palette.textMuted)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }

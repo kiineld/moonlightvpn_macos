@@ -163,7 +163,7 @@ struct ConnectScreen: View {
                             }
                         }
                     }
-                    .scrollIndicators(.never)
+                    .mlScrollIndicators(hidden: true)
                 }
             }
         }

@@ -21,7 +21,7 @@ struct SettingsScreen: View {
         ScrollView {
             columns.padding(.bottom, 8).rise(0, page)
         }
-        .scrollIndicators(.never)
+        .mlScrollIndicators(hidden: true)
     }
 
     private var columns: some View {
@@ -245,10 +245,10 @@ struct SettingsScreen: View {
                     LogoTile(size: 42, radius: Radii.tile)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("moonlight")
-                            .fixedSize()
                             .font(.mlDisplay(16, .bold))
                             .tracking(-0.025 * 16)
                             .foregroundStyle(palette.text)
+                            .fixedSize()
                         Text("\(L.t(.version, locale)) \(AppConfig.version) · \(AppConfig.deviceName)")
                             .font(.ml(TypeScale.meta))
                             .foregroundStyle(palette.textMuted)

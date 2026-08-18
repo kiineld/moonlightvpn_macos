@@ -23,8 +23,8 @@ https://github.com/kiineld/moonlightvpn_macos/releases/latest/download/Moonlight
 
 The universal build runs everywhere; the per-architecture builds are about half
 the size. The filenames carry no version, so those URLs keep working across
-releases — the version is in the release title and in the bundle. macOS 13
-Ventura or later.
+releases — the version is in the release title and in the bundle. **macOS 12
+Monterey or later.**
 
 Releases are cut by tagging: `git tag v1.2.3 && git push origin v1.2.3`.
 
@@ -364,10 +364,33 @@ scripts/build-app.sh      # build/Moonlight.app
 ```
 
 `ARCH=universal scripts/build-app.sh` for both slices, which needs full Xcode.
-`scripts/make-dmg.sh` packages it. `scripts/screenshots.sh` regenerates the
+`scripts/make-dmg.sh` packages it, styling the installer window — background,
+icon positions, no toolbar — through Finder, because that styling lives in the
+volume's `.DS_Store` and Finder is what writes it. Without a GUI session the
+image is still produced, plain but with the Applications symlink, so it installs
+by dragging either way. The backdrop is drawn by
+`scripts/make-dmg-background.swift` rather than shipped as an asset, so it stays
+in step with the palette. `scripts/screenshots.sh` regenerates the
 images above.
 
-Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 13+.
+Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 12+.
+
+### Staying on Monterey
+
+The deployment target is 12.0, which rules out three APIs the app would
+otherwise use:
+
+| macOS 13 API | What is used instead |
+|---|---|
+| `MenuBarExtra` | an AppKit `NSStatusItem`, one path for every version |
+| `SMAppService` | a LaunchAgent the app writes into `~/Library/LaunchAgents` |
+| `scrollIndicators` | nothing — the scroller keeps its default behaviour |
+
+The status item is arguably the better arrangement anyway: its menu is rebuilt
+each time it opens, so the traffic figures and node list are correct at the
+moment they are read rather than whenever SwiftUI last re-rendered them.
+
+`otool -l` on a release binary reports `minos 12.0`, not just the plist.
 
 ## Tests
 

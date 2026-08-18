@@ -17,7 +17,7 @@ public enum L {
     public enum Key {
         // Navigation and page headers
         case navConnect, navSubscription, navApps, navSettings
-        case collapseSidebar, expandSidebar
+        case collapseSidebar, expandSidebar, quit
         case titleConnect, subtitleConnect
         case titleSubscription, subtitleSubscription
         case titleApps, subtitleApps
@@ -92,6 +92,7 @@ public enum L {
             case .navSettings: return "Настройки"
             case .collapseSidebar: return "Свернуть меню"
             case .expandSidebar: return "Развернуть меню"
+            case .quit: return "Выйти"
             case .titleConnect: return "Подключение"
             case .subtitleConnect: return "Выберите узел и включите туннель"
             case .titleSubscription: return "Подписка"
@@ -267,6 +268,7 @@ public enum L {
             case .navSettings: return "Settings"
             case .collapseSidebar: return "Collapse the sidebar"
             case .expandSidebar: return "Expand the sidebar"
+            case .quit: return "Quit"
             case .titleConnect: return "Connection"
             case .subtitleConnect: return "Pick a node and switch the tunnel on"
             case .titleSubscription: return "Subscription"

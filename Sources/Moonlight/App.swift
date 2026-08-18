@@ -24,6 +24,7 @@ struct MoonlightApp: App {
                 .onAppear {
                     delegate.tunnel = tunnel
                     delegate.settings = settings
+                    delegate.attachStatusItem()
                 }
                 .task {
                     // A subscription cached from a previous launch gives the
@@ -37,7 +38,6 @@ struct MoonlightApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Moonlight") {
@@ -59,83 +59,18 @@ struct MoonlightApp: App {
         // the two together spin the scene at 100% CPU — starving the main actor
         // badly enough that awaited work (the launch-time subscription refresh)
         // never resumes.
-        MenuBarExtra(isInserted: Binding(
-            get: { settings.menuBarIcon },
-            set: { if $0 != settings.menuBarIcon { settings.menuBarIcon = $0 } }
-        )) {
-            MenuBarContent()
-                .environmentObject(tunnel)
-                .environmentObject(settings)
-        } label: {
-            // A template image so the glyph inverts with the menu bar's own
-            // appearance rather than staying lime on a light bar. Both states are
-            // drawn once — building an NSImage inside the scene body redraws it
-            // on every update.
-            Image(nsImage: tunnel.state.isConnected ? MenuBarIcon.connected : MenuBarIcon.idle)
-        }
     }
 }
 
 // MARK: - Menu bar
 
-private struct MenuBarContent: View {
-    @EnvironmentObject var tunnel: TunnelController
-    @EnvironmentObject var settings: AppSettings
+enum MenuBarIcon {
+    private static let connectedImage = render(alpha: 1)
+    private static let idleImage = render(alpha: 0.55)
 
-    var body: some View {
-        Button(tunnel.state.isConnected
-               ? L.t(.hintDisconnect, settings.locale)
-               : L.t(.hintConnect, settings.locale)) {
-            Task { await tunnel.toggle() }
-        }
-        .disabled(!tunnel.hasSubscription || tunnel.state.isBusy)
-
-        if tunnel.state.isConnected {
-            Text("↓ \(Format.rate(tunnel.rateDown, locale: settings.locale))  ↑ \(Format.rate(tunnel.rateUp, locale: settings.locale))")
-            Text(Format.duration(tunnel.uptime))
-        }
-        if let days = tunnel.info.daysLeft {
-            Text("\(L.t(.remainingCaps, settings.locale)): \(Format.days(days, locale: settings.locale))")
-        }
-
-        Divider()
-
-        // Nodes are listed only while connected: selecting one with the tunnel
-        // down would write a preference the user cannot see take effect.
-        if tunnel.state.isConnected, !tunnel.nodes.isEmpty {
-            Menu(L.t(.servers, settings.locale)) {
-                Button(L.t(.auto, settings.locale)) {
-                    Task { await tunnel.selectAuto() }
-                }
-                ForEach(tunnel.nodes.prefix(20)) { node in
-                    // `flag` is optional since a cross-country group has none;
-                    // interpolating it directly printed `Optional("🇸🇪")`.
-                    Button([node.flag, node.title].compactMap { $0 }.joined(separator: " ")) {
-                        Task { await tunnel.select(node: node.name) }
-                    }
-                }
-            }
-            Divider()
-        }
-
-        Button(L.t(.navConnect, settings.locale)) {
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows.first?.makeKeyAndOrderFront(nil)
-        }
-        Button("Quit") { NSApp.terminate(nil) }
-            .keyboardShortcut("q")
+    static func image(connected: Bool) -> NSImage {
+        connected ? connectedImage : idleImage
     }
-}
-
-/// The menu-bar glyph, drawn from the logo's own crescent path rather than
-/// approximated with two overlapping circles — the earlier version read as a
-/// blob at 18pt.
-///
-/// Both states are built once. Constructing an `NSImage` inside the scene body
-/// rebuilds it on every update.
-private enum MenuBarIcon {
-    static let connected = render(alpha: 1)
-    static let idle = render(alpha: 0.55)
 
     /// The crescent and its two dots, from `assets/logo-tile.svg`, in the same
     /// 44-unit box the tile uses.
@@ -192,6 +127,14 @@ private enum MenuBarIcon {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var tunnel: TunnelController?
     var settings: AppSettings?
+    private var statusItem: StatusItemController?
+
+    /// Built once both objects exist, which is when the root view appears.
+    @MainActor
+    func attachStatusItem() {
+        guard statusItem == nil, let tunnel, let settings else { return }
+        statusItem = StatusItemController(tunnel: tunnel, settings: settings)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current()

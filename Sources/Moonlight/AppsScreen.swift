@@ -142,7 +142,7 @@ struct AppsScreen: View {
                             }
                         }
                     }
-                    .scrollIndicators(.never)
+                    .mlScrollIndicators(hidden: true)
                 }
             }
         }

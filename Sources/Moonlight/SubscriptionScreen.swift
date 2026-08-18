@@ -13,7 +13,7 @@ struct SubscriptionScreen: View {
         ScrollView {
             columns.padding(.bottom, 8)
         }
-        .scrollIndicators(.never)
+        .mlScrollIndicators(hidden: true)
     }
 
     private var columns: some View {

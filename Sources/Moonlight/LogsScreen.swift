@@ -131,7 +131,7 @@ struct LogsScreen: View {
                             }
                         }
                     }
-                    .scrollIndicators(.visible)
+                    .mlScrollIndicators(hidden: false)
                     .onChange(of: filtered.count) { _ in
                         // Follow the tail, the way a terminal does, unless the
                         // reader has scrolled away to look at something.
@@ -152,14 +152,11 @@ struct LogsScreen: View {
 
     private var header: some View {
         HStack(spacing: 0) {
-            Text(L.t(.logTime, locale)).frame(width: 76, alignment: .leading)
-            Text(L.t(.logLevel, locale)).frame(width: 62, alignment: .leading)
-            Text(L.t(.logSource, locale)).frame(width: 74, alignment: .leading)
-            Text(L.t(.logMessage, locale)).frame(maxWidth: .infinity, alignment: .leading)
+            ColumnHeading(text: L.t(.logTime, locale), width: 76)
+            ColumnHeading(text: L.t(.logLevel, locale), width: 62)
+            ColumnHeading(text: L.t(.logSource, locale), width: 74)
+            ColumnHeading(text: L.t(.logMessage, locale))
         }
-        .font(.ml(10.5, .heavy))
-        .tracking(0.08 * 10.5)
-        .foregroundStyle(palette.textMuted)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
