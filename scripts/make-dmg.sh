@@ -26,6 +26,26 @@ VOLUME="Moonlight $VERSION"
 [ -d "$APP" ] || { echo "no $APP — run scripts/build-app.sh first" >&2; exit 1; }
 rm -f "$DMG"
 
+swift scripts/make-dmg-background.swift build/dmg-background.png >/dev/null
+
+# dmgbuild writes the volume's .DS_Store directly, in pure Python. The usual
+# alternative is driving Finder through AppleScript, which needs a GUI session —
+# a CI runner has none, and every image it built came out unstyled. `appdmg`
+# would also work headlessly, but its native dependency no longer builds on
+# current Node.
+if python3 -c "import dmgbuild" >/dev/null 2>&1; then
+  python3 -m dmgbuild \
+    -s scripts/dmg-settings.py \
+    -D app="$(pwd)/$APP" \
+    -D icon="$(pwd)/$APP/Contents/Resources/AppIcon.icns" \
+    -D background="$(pwd)/build/dmg-background.png" \
+    "$VOLUME" "$DMG" >/dev/null
+  echo "▸ $DMG ($(du -h "$DMG" | cut -f1)) styled"
+  shasum -a 256 "$DMG" | tee "$DMG.sha256"
+  exit 0
+fi
+
+echo "  (dmgbuild unavailable — building a plain image)" >&2
 staging=$(mktemp -d)
 mount=""
 cleanup() {
@@ -49,44 +69,11 @@ hdiutil create -volname "$VOLUME" -srcfolder "$staging" -ov \
 mount=$(mktemp -d)
 hdiutil attach build/rw.dmg -nobrowse -noautoopen -mountpoint "$mount" >/dev/null
 
-styled=0
-if osascript - "$VOLUME" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set volumeName to item 1 of argv
-  tell application "Finder"
-    tell disk volumeName
-      open
-      set current view of container window to icon view
-      set toolbar visible of container window to false
-      set statusbar visible of container window to false
-      -- 660x420 of content; the frame includes the title bar.
-      set the bounds of container window to {300, 160, 960, 602}
-      set options to the icon view options of container window
-      set arrangement of options to not arranged
-      set icon size of options to 110
-      set background picture of options to file ".background:background.png"
-      set position of item "Moonlight.app" of container window to {190, 250}
-      set position of item "Applications" of container window to {470, 250}
-      close
-      open
-      update without registering applications
-      delay 2
-      close
-    end tell
-  end tell
-end run
-APPLESCRIPT
-then
-  styled=1
-else
-  echo "  (Finder unavailable — the window keeps its default layout)" >&2
-fi
-
 sync
 hdiutil detach "$mount" -force >/dev/null
 mount=""
 
 hdiutil convert build/rw.dmg -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
 
-echo "▸ $DMG ($(du -h "$DMG" | cut -f1)) $([ "$styled" = 1 ] && echo styled || echo plain)"
+echo "▸ $DMG ($(du -h "$DMG" | cut -f1)) plain"
 shasum -a 256 "$DMG" | tee "$DMG.sha256"
