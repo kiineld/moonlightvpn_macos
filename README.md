@@ -154,6 +154,27 @@ a tunnel still carrying traffic while the window says "Отключено". Laun
 therefore stops any privileged core it did not ask for, alongside restoring the
 proxy settings.
 
+That clean-up is also why **only one copy runs at a time**. A second copy — say
+one opened from the DMG while the installed one runs — would take the first
+one's core for an orphan and stop it. It now brings the running copy forward
+and exits before touching anything.
+
+### Quitting, and starting at login
+
+Quitting brings everything down — routing, the proxy settings, and the idle core
+too, which `disconnect()` deliberately keeps warm while the app is open. The
+teardown runs under `.terminateLater`; it used to be awaited on a semaphore in
+`applicationWillTerminate`, which blocked the very thread the disconnect needed,
+so every quit stalled eight seconds and then left the tunnel up.
+
+The app starts at login when **Запускать при входе в систему** is on, and only
+then. The switch is read from the system (`SMAppService`, or the LaunchAgent on
+Monterey) rather than from a stored preference, and after a change it settles on
+what actually registered. The app also opts out of macOS relaunching it at
+login — a menu bar app is still running at shutdown, so "reopen windows" brought
+it back regardless of the switch. A login launch starts tucked away: into the
+menu bar when the icon is there, otherwise minimised to the Dock.
+
 ## Updating
 
 The app is not notarised and there is no App Store, so **Settings → Проверить
@@ -345,18 +366,28 @@ icon buttons over the server list, the list they act on; the theme switch lives
 in Settings. What is left of the plan sits in the sidebar, the one place it is
 shown.
 
-The window is a flat `bgDeep` canvas with a floating sidebar inset 8pt from its
-edges, starting just under the traffic lights. Cards are `surface` fills with no
-outline — the canvas is a step darker than the surface in both themes, so the
-fill alone separates them. The sidebar collapses to a 60pt icon rail from the
-panel button beside the wordmark.
+The window is a `bgDeep` canvas with two soft washes bleeding in from opposite
+corners, and a floating sidebar inset 8pt from its edges, starting just under
+the traffic lights. Cards carry no outline — the canvas is a step darker than
+any surface on it in both themes, so the surface alone separates them. The
+sidebar collapses to a 64pt icon rail from the half-circle tab halfway down its
+edge; the tab's chevron points right while it is open and left while collapsed.
 
 ### Liquid Glass
 
-On macOS 26 and later the floating layer — the sidebar, the connect button, the
-state pill, the small icon buttons — is Liquid Glass. Content cards stay flat,
-which is where the platform itself draws the line. Before 26 the same shapes
-are drawn as flat surfaces, at the same sizes, so nothing moves between systems.
+On macOS 26 and later every surface is Liquid Glass: the sidebar and its active
+row, cards, buttons, pills, fields and the segmented controls' tracks. Accent
+fills become accent-tinted glass — the plan card is lime glass — while icon
+tiles, the logo and small status chips stay solid, because their colour is the
+information. Before 26 the same shapes are drawn as flat surfaces, at the same
+sizes, so nothing moves between systems. The canvas washes are there for the
+glass: over a flat colour it has nothing to bend and reads as a grey card.
+
+The sidebar's tab is not a separate piece of glass. The panel and a circle
+centred on its edge sit in one `NSGlassEffectContainerView`, which draws
+touching glass as a single piece — so the tab is a bump grown out of the panel
+with one continuous rim, where a glass view clipped to a half shape showed its
+square rim as a notch.
 
 The glass is `NSGlassEffectView`, looked up **by name at runtime**
 (`Sources/Moonlight/Glass.swift`). Neither the Command Line Tools this builds
@@ -405,6 +436,7 @@ otherwise use:
 | `MenuBarExtra` | an AppKit `NSStatusItem`, one path for every version |
 | `SMAppService` | a LaunchAgent the app writes into `~/Library/LaunchAgents` |
 | `scrollIndicators` | nothing — the scroller keeps its default behaviour |
+| `onContinuousHover` | the pointer is pushed on hover and popped on exit |
 | `ViewThatFits` | a scroll view always — the server list fills its card |
 
 The status item is arguably the better arrangement anyway: its menu is rebuilt

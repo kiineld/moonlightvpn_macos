@@ -71,8 +71,7 @@ struct LogsScreen: View {
                     .foregroundStyle(source == nil ? palette.textOnAccent : palette.textMuted)
                     .padding(.horizontal, 14)
                     .frame(height: 30)
-                    .background(source == nil ? palette.accent : palette.surface2)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, tint: source == nil ? palette.accent : nil, fallback: source == nil ? palette.accent : palette.surface2)
             }
             .pressButton()
 
@@ -102,8 +101,7 @@ struct LogsScreen: View {
             .padding(.horizontal, 12)
             .frame(height: 30)
             .frame(maxWidth: .infinity)
-            .background(palette.surface2)
-            .clipShape(Capsule())
+            .mlGlass(.capsule, fallback: palette.surface2)
 
             Button {
                 logs.clear()
@@ -111,8 +109,7 @@ struct LogsScreen: View {
                 IconView(.trash2, size: 15)
                     .foregroundStyle(palette.textMuted)
                     .frame(width: 30, height: 30)
-                    .background(palette.surface2)
-                    .clipShape(Circle())
+                    .mlGlass(.circle, fallback: palette.surface2)
             }
             .pressIcon()
         }

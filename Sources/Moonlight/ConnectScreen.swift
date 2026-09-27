@@ -148,8 +148,7 @@ struct ConnectScreen: View {
                     .foregroundStyle(palette.textOnAccent)
                     .padding(.horizontal, 18)
                     .frame(height: 38)
-                    .background(palette.accent)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
             }
             .pressButton()
             .padding(.top, 4)
@@ -199,8 +198,11 @@ struct ConnectScreen: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
-            .background(tunnel.autoSelect ? palette.surface2 : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background {
+                if tunnel.autoSelect {
+                    Color.clear.mlGlass(.rounded(14), fallback: palette.surface2)
+                }
+            }
             .contentShape(Rectangle())
         }
         .pressCard()
@@ -368,8 +370,14 @@ private struct NodeRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(selected ? palette.surface2 : (hovering ? palette.surface2.opacity(0.6) : .clear))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background {
+                if selected {
+                    Color.clear.mlGlass(.rounded(14), fallback: palette.surface2)
+                } else {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(palette.text.opacity(hovering ? 0.05 : 0))
+                }
+            }
             .contentShape(Rectangle())
         }
         .pressCard()

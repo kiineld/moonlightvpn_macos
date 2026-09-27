@@ -75,8 +75,10 @@ struct SubscriptionScreen: View {
                 .frame(width: 280, height: 280)
                 .offset(x: 80, y: 140)
         }
-        .background(palette.accent)
+        // The wash is clipped to the card; the glass behind it is not, so its
+        // rim survives.
         .clipShape(RoundedRectangle(cornerRadius: Radii.panel, style: .continuous))
+        .mlGlass(.rounded(Radii.panel), tint: palette.accent, fallback: palette.accent)
     }
 
     private func heroStat(_ label: String, _ value: String) -> some View {
@@ -157,14 +159,19 @@ struct SubscriptionScreen: View {
             ) {
                 NSWorkspace.shared.open(AppConfig.telegramBotURL)
             }
-            RowDivider(leading: 74)
-            ActionRow(
-                icon: .plus,
-                fill: palette.cat4,
-                title: L.t(.addSubscriptionRow, locale),
-                subtitle: L.t(.addSubscriptionSubtitle, locale)
-            ) {
-                page = .importSubscription
+            // One subscription at a time: importing replaces it, so offering
+            // to *add* one beside an active plan promised something the app
+            // does not do. Removing it brings the row back.
+            if !tunnel.hasSubscription {
+                RowDivider(leading: 74)
+                ActionRow(
+                    icon: .plus,
+                    fill: palette.cat4,
+                    title: L.t(.addSubscriptionRow, locale),
+                    subtitle: L.t(.addSubscriptionSubtitle, locale)
+                ) {
+                    page = .importSubscription
+                }
             }
             if tunnel.hasSubscription {
                 RowDivider(leading: 74)

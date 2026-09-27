@@ -29,11 +29,12 @@ struct RootView: View {
             Sidebar(page: $page)
                 .padding(.leading, Self.gutter)
                 .padding(.bottom, Self.gutter)
+                .zIndex(1)
             content
         }
         .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(settings.palette.bgDeep)
+        .background(Ambient(palette: settings.palette, dark: settings.theme == .dark))
         // macOS reports the title bar as a top safe-area inset. Ignoring it puts
         // the content origin at the top of the window, so the sidebar can sit
         // directly under the traffic lights rather than a title bar's height
@@ -92,7 +93,7 @@ private struct Sidebar: View {
     private var collapsed: Bool { settings.sidebarCollapsed }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
             header
 
             NavItem(icon: .power, title: L.t(.navConnect, locale),
@@ -112,25 +113,26 @@ private struct Sidebar: View {
             if collapsed { collapsedPlan } else { planCard }
         }
         .padding(10)
-        .frame(width: collapsed ? 60 : 212)
+        .frame(width: collapsed ? 64 : 216)
         .frame(maxHeight: .infinity)
-        .mlGlass(.rounded(18), fallback: palette.surface)
+        .mlGlassPanel(radius: 18, tab: CollapseTab.width, fallback: palette.surface)
+        .overlay(alignment: .trailing) {
+            CollapseTab(collapsed: collapsed) { settings.sidebarCollapsed.toggle() }
+                .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
+                .offset(x: CollapseTab.width)
+        }
         .animation(Motion.slide, value: collapsed)
     }
 
-    /// The header carries its own collapse control — the panel icon every
-    /// sidebar on the platform uses, so it needs no explaining. Collapsed there
-    /// is no room beside the logo, so it takes its own line under it.
+    /// The wordmark, or the logo alone when collapsed. The collapse control is
+    /// the tab on the sidebar's edge, not a button in here.
     @ViewBuilder
     private var header: some View {
         if collapsed {
-            VStack(spacing: 10) {
-                LogoTile(size: 28, radius: 9)
-                collapseButton
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            LogoTile(size: 28, radius: 9)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+                .padding(.bottom, 14)
         } else {
             HStack(spacing: 9) {
                 LogoTile(size: 28, radius: 9)
@@ -140,19 +142,11 @@ private struct Sidebar: View {
                     .foregroundStyle(palette.text)
                     .fixedSize()
                 Spacer(minLength: 0)
-                collapseButton
             }
             .padding(.leading, 4)
             .padding(.top, 4)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
         }
-    }
-
-    private var collapseButton: some View {
-        HoverIconButton(icon: collapsed ? .panelLeftOpen : .panelLeftClose) {
-            settings.sidebarCollapsed.toggle()
-        }
-        .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
     }
 
     /// Collapsed there is no room for the card, but the plan still has to be
@@ -169,8 +163,7 @@ private struct Sidebar: View {
             }
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(palette.text.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .mlGlass(.rounded(12), fallback: palette.text.opacity(0.05))
         }
         .pressCard()
         .help(planDays)
@@ -232,8 +225,7 @@ private struct Sidebar: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(palette.text.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .mlGlass(.rounded(12), fallback: palette.text.opacity(0.05))
         }
         .pressCard()
     }
@@ -265,17 +257,22 @@ private struct NavItem: View {
                     Spacer(minLength: 0)
                 }
             }
-            .padding(.horizontal, collapsed ? 0 : 10)
+            .padding(.horizontal, collapsed ? 0 : 12)
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
-            .frame(height: 34)
-            // The active wash is *not* animated. Animating it crossfaded the
-            // outgoing item against the incoming one for a few frames — the
-            // blink. A selection that moves instantly cannot smear; only the
-            // hover wash, which never overlaps a selection, is worth easing.
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(palette.text.opacity(active ? 0.08 : (hovering ? 0.04 : 0)))
-            )
+            .frame(height: 38)
+            // The active glass is *not* animated. Animating the selection
+            // crossfaded the outgoing item against the incoming one for a few
+            // frames — the blink. A selection that moves instantly cannot
+            // smear; only the hover wash, which never overlaps a selection, is
+            // worth easing.
+            .background {
+                if active {
+                    Color.clear.mlGlass(.rounded(12), fallback: palette.text.opacity(0.08))
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(palette.text.opacity(hovering ? 0.05 : 0))
+                }
+            }
             .contentShape(Rectangle())
         }
         .pressCard()
@@ -285,29 +282,61 @@ private struct NavItem: View {
     }
 }
 
-/// A bare glyph that gains a wash on hover — for controls that should be
-/// findable without being part of the composition.
-struct HoverIconButton: View {
+/// A half-circle tab standing off the sidebar's edge, halfway down, that
+/// collapses and expands it. The chevron points right while the sidebar is
+/// open and left while it is collapsed.
+private struct CollapseTab: View {
     @Environment(\.palette) private var palette
-    let icon: Icon
-    var size: CGFloat = 28
+    let collapsed: Bool
     let action: () -> Void
+
+    /// A true half circle: twice as tall as it stands out.
+    static let width: CGFloat = 18
+    static let height: CGFloat = 36
 
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            IconView(icon, size: 16)
-                .foregroundStyle(hovering ? palette.text : palette.textMuted)
-                .frame(width: size, height: size)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(palette.text.opacity(hovering ? 0.06 : 0))
-                )
+            // No surface of its own: the tab's glass is part of the sidebar's,
+            // grown out of its edge (see `mlGlassPanel`).
+            IconView(collapsed ? .chevronLeft : .chevronRight, size: 13, strokeWidth: 2.6)
+                .foregroundStyle(hovering ? palette.accentInk : palette.textMuted)
+                .offset(x: -1)
+                .frame(width: Self.width, height: Self.height)
+                .contentShape(TrailingHalfCapsule())
         }
         .pressIcon()
         .onHover { hovering = $0 }
         .animation(Motion.paint, value: hovering)
+    }
+}
+
+/// The canvas: `bgDeep`, with two soft washes bleeding in from opposite
+/// corners, as the installer window's backdrop has. Flat, glass has nothing to
+/// bend and reads as a grey card; over a little colour it reads as glass.
+private struct Ambient: View {
+    let palette: Palette
+    let dark: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                palette.bgDeep
+                wash(palette.accent, dark ? 0.10 : 0.30, diameter: 760)
+                    .position(x: geometry.size.width - 40, y: 20)
+                wash(palette.purple, dark ? 0.09 : 0.16, diameter: 680)
+                    .position(x: 160, y: geometry.size.height + 60)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func wash(_ colour: Color, _ strength: Double, diameter: CGFloat) -> some View {
+        Circle()
+            .fill(RadialGradient(colors: [colour.opacity(strength), colour.opacity(0)],
+                                 center: .center, startRadius: 0, endRadius: diameter / 2))
+            .frame(width: diameter, height: diameter)
     }
 }
 

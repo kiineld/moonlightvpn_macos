@@ -45,8 +45,7 @@ struct ImportScreen: View {
                         .foregroundStyle(palette.textOnAccent)
                         .padding(.horizontal, 18)
                         .frame(height: 40)
-                        .background(palette.accent)
-                        .clipShape(Capsule())
+                        .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
                 }
                 .pressButton()
                 .disabled(link.trimmingCharacters(in: .whitespaces).isEmpty || working)
@@ -54,11 +53,10 @@ struct ImportScreen: View {
             .padding(.leading, 16)
             .padding(.trailing, 6)
             .frame(height: 52)
-            .background(palette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .mlGlass(.rounded(16), fallback: palette.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(focused ? palette.accentLine : palette.hairline, lineWidth: 1)
+                    .strokeBorder(focused ? palette.accentLine : .clear, lineWidth: 1)
             )
             .animation(Motion.paint, value: focused)
 
@@ -160,11 +158,10 @@ struct OutlineButton: View {
             .foregroundStyle(palette.text)
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .background(palette.surface)
-            .clipShape(Capsule())
+            .mlGlass(.capsule, fallback: palette.surface)
             .overlay(
                 Capsule().strokeBorder(
-                    hovering ? palette.accentLine : palette.hairline, lineWidth: 1
+                    hovering ? palette.accentLine : .clear, lineWidth: 1
                 )
             )
         }

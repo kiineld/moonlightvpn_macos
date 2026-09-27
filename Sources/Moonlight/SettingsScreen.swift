@@ -109,8 +109,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, 15)
                     .frame(height: 36)
-                    .background(palette.surface2)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, fallback: palette.surface2)
             }
             .pressButton()
             .disabled(helperBusy)
@@ -344,8 +343,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(palette.textOnAccent)
                     .padding(.horizontal, 15)
                     .frame(height: 36)
-                    .background(palette.accent)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
             }
             .pressButton()
 
@@ -360,8 +358,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, 15)
                     .frame(height: 36)
-                    .background(palette.surface2)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, fallback: palette.surface2)
             }
             .pressButton()
         }

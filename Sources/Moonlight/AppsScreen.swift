@@ -98,15 +98,13 @@ struct AppsScreen: View {
                     .foregroundStyle(palette.textOnAccent)
                     .padding(.horizontal, 14)
                     .frame(height: 32)
-                    .background(palette.accent)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
             }
             .pressButton()
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 13)
-        .background(palette.accentQuiet)
-        .clipShape(RoundedRectangle(cornerRadius: Radii.card, style: .continuous))
+        .mlGlass(.rounded(Radii.card), tint: palette.accent.opacity(0.25), fallback: palette.accentQuiet)
     }
 
     // MARK: - Apps
@@ -160,8 +158,7 @@ struct AppsScreen: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 34)
-        .background(palette.surface2)
-        .clipShape(Capsule())
+        .mlGlass(.capsule, fallback: palette.surface2)
     }
 
     /// An app's toggle is a view onto the rule list: switching it on appends a
@@ -299,8 +296,7 @@ private struct RulesPanel: View {
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, 12)
                     .frame(height: 34)
-                    .background(palette.surface2)
-                    .clipShape(Capsule())
+                    .mlGlass(.capsule, fallback: palette.surface2)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -313,8 +309,7 @@ private struct RulesPanel: View {
                         .foregroundStyle(palette.accentInk)
                         .padding(.horizontal, 7)
                         .frame(height: 20)
-                        .background(palette.accentQuiet)
-                        .clipShape(Capsule())
+                        .mlGlass(.capsule, tint: palette.accent.opacity(0.25), fallback: palette.accentQuiet)
                 }
                 Spacer(minLength: 0)
             }
@@ -326,16 +321,14 @@ private struct RulesPanel: View {
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, 12)
                     .frame(height: 36)
-                    .background(palette.surface2)
-                    .clipShape(RoundedRectangle(cornerRadius: Radii.field, style: .continuous))
+                    .mlGlass(.rounded(Radii.field), fallback: palette.surface2)
                     .onSubmit(add)
 
                 Button(action: add) {
                     IconView(.plus, size: 16, strokeWidth: 2.4)
                         .foregroundStyle(palette.textOnAccent)
                         .frame(width: 36, height: 36)
-                        .background(palette.accent)
-                        .clipShape(Circle())
+                        .mlGlass(.circle, tint: palette.accent, fallback: palette.accent)
                 }
                 .pressIcon()
                 .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)

@@ -10,10 +10,23 @@ struct PressScale: ButtonStyle {
     var scale: CGFloat = Motion.pressButton
 
     func makeBody(configuration: Configuration) -> some View {
+        PressScaleBody(configuration: configuration, scale: scale)
+    }
+}
+
+/// A view rather than the style's body directly, so it can read whether the
+/// button is enabled: a disabled control showing the pointing hand promises a
+/// click that does nothing.
+private struct PressScaleBody: View {
+    @Environment(\.isEnabled) private var isEnabled
+    let configuration: ButtonStyleConfiguration
+    let scale: CGFloat
+
+    var body: some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? scale : 1)
             .animation(Motion.paint, value: configuration.isPressed)
-            .pointerCursor()
+            .pointerCursor(isEnabled)
     }
 }
 
@@ -36,12 +49,30 @@ extension View {
     /// AppKit does not infer this from a SwiftUI `Button` the way the web does
     /// from an `<a>`, so every clickable surface has to ask. It lives in the
     /// shared button style, which is what most of the app goes through.
+    ///
+    /// On 15 SwiftUI owns the cursor itself (`pointerStyle`). Before that the
+    /// cursor has to be set by hand, and a `push`/`pop` pair on hover — what
+    /// this used to be everywhere — drifts: a view re-rendered or removed while
+    /// hovered never pops, the stack unbalances, and the hand goes missing on
+    /// some controls and sticks on others. Setting it on every move inside the
+    /// view re-asserts it instead.
+    @ViewBuilder
     func pointerCursor(_ enabled: Bool = true) -> some View {
-        onHover { inside in
-            guard enabled else { return }
-            // `push`/`pop` rather than `set`: nested hovers unwind correctly,
-            // and a view that disappears mid-hover does not strand the cursor.
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        if #available(macOS 15.0, *) {
+            pointerStyle(enabled ? .link : nil)
+        } else if #available(macOS 13.0, *) {
+            onContinuousHover { phase in
+                guard enabled else { return }
+                switch phase {
+                case .active: NSCursor.pointingHand.set()
+                case .ended: NSCursor.arrow.set()
+                }
+            }
+        } else {
+            onHover { inside in
+                guard enabled else { return }
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
         }
     }
 }
@@ -85,11 +116,14 @@ private struct RiseIn: ViewModifier {
 
 // MARK: - Containers
 
-/// A surface card: `--ml-surface` at one of the system radii.
+/// A card at one of the system radii: glass on 26 and later, `--ml-surface`
+/// before it.
 ///
 /// No outline. The canvas behind every card is `bgDeep`, a step darker than
 /// the surface in both themes, so the fill alone separates them — a hairline
-/// on top of that was a second edge saying the same thing.
+/// on top of that was a second edge saying the same thing. The content is
+/// clipped to the card and the glass sits behind, unclipped, so its rim is
+/// not shaved off.
 struct Panel<Content: View>: View {
     @Environment(\.palette) private var palette
     var radius: CGFloat = Radii.card
@@ -99,8 +133,8 @@ struct Panel<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(palette.surface)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .mlGlass(.rounded(radius), fallback: palette.surface)
     }
 }
 
@@ -112,8 +146,8 @@ struct RowGroup<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(palette.surface)
             .clipShape(RoundedRectangle(cornerRadius: Radii.card, style: .continuous))
+            .mlGlass(.rounded(Radii.card), fallback: palette.surface)
     }
 }
 
@@ -213,7 +247,9 @@ struct MLToggle: View {
             isOn.toggle()
         } label: {
             ZStack(alignment: .leading) {
-                Capsule().fill(isOn ? palette.accent : palette.surface3)
+                // A translucent ink rather than `surface3` when off: on glass the
+                // solid grey all but vanished against the light theme.
+                Capsule().fill(isOn ? palette.accent : palette.text.opacity(0.12))
                 Circle()
                     .fill(.white)
                     .frame(width: 20, height: 20)
@@ -279,8 +315,7 @@ struct SegmentedPill<Value: Hashable>: View {
         }
         .frame(height: height)
         .padding(3)
-        .background(palette.surface2)
-        .clipShape(Capsule())
+        .mlGlass(.capsule, fallback: palette.surface2)
     }
 }
 
@@ -339,8 +374,7 @@ struct AccentButton: View {
                 .padding(.horizontal, 32)
                 .frame(maxWidth: fullWidth ? .infinity : nil)
                 .frame(height: height)
-                .background(palette.accent)
-                .clipShape(Capsule())
+                .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
         }
         .pressButton()
         .disabled(!enabled)
@@ -444,7 +478,7 @@ struct QuotaBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(palette.surface3)
+                Capsule().fill(palette.text.opacity(0.1))
                 Capsule()
                     .fill(palette.accent)
                     .frame(width: geometry.size.width * min(1, max(0, used ?? 0)))

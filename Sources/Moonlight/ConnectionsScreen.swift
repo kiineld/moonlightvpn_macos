@@ -47,8 +47,7 @@ struct ConnectionsScreen: View {
                 .foregroundStyle(palette.accentInk)
                 .padding(.horizontal, 12)
                 .frame(height: 30)
-                .background(palette.accentQuiet)
-                .clipShape(Capsule())
+                .mlGlass(.capsule, tint: palette.accent.opacity(0.25), fallback: palette.accentQuiet)
 
             HStack(spacing: 8) {
                 IconView(.search, size: 14).foregroundStyle(palette.textMuted)
@@ -60,8 +59,7 @@ struct ConnectionsScreen: View {
             .padding(.horizontal, 12)
             .frame(height: 30)
             .frame(maxWidth: .infinity)
-            .background(palette.surface2)
-            .clipShape(Capsule())
+            .mlGlass(.capsule, fallback: palette.surface2)
 
             Button {
                 Task { await tunnel.closeAllConnections() }
@@ -73,8 +71,7 @@ struct ConnectionsScreen: View {
                 .foregroundStyle(palette.danger)
                 .padding(.horizontal, 13)
                 .frame(height: 30)
-                .background(palette.dangerQuiet)
-                .clipShape(Capsule())
+                .mlGlass(.capsule, tint: palette.danger.opacity(0.25), fallback: palette.dangerQuiet)
             }
             .pressButton()
             .disabled(connections.isEmpty)
