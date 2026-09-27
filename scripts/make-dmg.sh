@@ -26,7 +26,11 @@ VOLUME="Moonlight $VERSION"
 [ -d "$APP" ] || { echo "no $APP — run scripts/build-app.sh first" >&2; exit 1; }
 rm -f "$DMG"
 
-swift scripts/make-dmg-background.swift build/dmg-background.png >/dev/null
+# The 1x and the @2x side by side: dmgbuild spots the pair by name and combines
+# them into one HiDPI TIFF, so the backdrop is sharp on Retina and the right
+# size everywhere.
+swift scripts/make-dmg-background.swift \
+  build/dmg-background.png build/dmg-background@2x.png >/dev/null
 
 # dmgbuild writes the volume's .DS_Store directly, in pure Python. The usual
 # alternative is driving Finder through AppleScript, which needs a GUI session —
@@ -53,8 +57,6 @@ cleanup() {
   rm -rf "$staging" build/rw.dmg
 }
 trap cleanup EXIT
-
-swift scripts/make-dmg-background.swift build/dmg-background.png >/dev/null
 
 cp -R "$APP" "$staging/Moonlight.app"
 ln -s /Applications "$staging/Applications"
