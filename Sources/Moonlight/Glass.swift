@@ -8,7 +8,7 @@ import AppKit
 /// this project builds with ship the macOS 15 SDK, and CI's Xcode is no newer,
 /// so neither `NSGlassEffectView` nor SwiftUI's `glassEffect` exists at compile
 /// time. The class does exist at runtime on 26 and later whatever SDK the app
-/// was linked against, and its public properties — `style`, `tintColor`,
+/// was linked against, and its public properties — `style` and
 /// `cornerRadius` — are plain Objective-C properties, so key-value coding
 /// reaches them without the headers.
 ///
@@ -17,9 +17,6 @@ import AppKit
 /// surfaces, which is how the platform itself draws the line.
 enum LiquidGlass {
     static let viewClass: NSView.Type? = NSClassFromString("NSGlassEffectView") as? NSView.Type
-    /// Glass views inside one of these that touch are drawn as a single piece.
-    static let containerClass: NSView.Type? =
-        NSClassFromString("NSGlassEffectContainerView") as? NSView.Type
 
     static var isAvailable: Bool { viewClass != nil }
 }
@@ -50,60 +47,72 @@ enum GlassShape {
     }
 }
 
-/// A capsule's right half: flat on the left, round on the right — a tab
-/// standing off the edge of whatever it is attached to.
-struct TrailingHalfCapsule: Shape {
-    func path(in rect: CGRect) -> Path {
-        let radius = min(rect.width, rect.height / 2)
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
-        path.addArc(center: CGPoint(x: rect.maxX - radius, y: rect.minY + radius), radius: radius,
-                    startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
-        path.addArc(center: CGPoint(x: rect.maxX - radius, y: rect.maxY - radius), radius: radius,
-                    startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
 extension View {
     /// Sits the view on glass, or on `fallback` where there is none.
     ///
-    /// `tint` colours the glass itself — use it for a state, never for
-    /// decoration. The fallback is drawn in the same shape, so the layout and
-    /// hit area are identical on every system.
+    /// `tint` colours the surface — use it for a state, never for decoration.
+    /// The fallback is drawn in the same shape, so the layout and hit area are
+    /// identical on every system.
     func mlGlass(_ shape: GlassShape, tint: Color? = nil, fallback: Color) -> some View {
         background(GlassBackground(shape: shape, tint: tint, fallback: fallback))
     }
 }
 
 private struct GlassBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
     let shape: GlassShape
     let tint: Color?
     let fallback: Color
 
     var body: some View {
         if LiquidGlass.isAvailable {
-            GlassBackdrop(shape: shape, tint: tint.map { NSColor($0) })
+            // The tint is painted over plain glass rather than handed to the
+            // glass. macOS mutes tinted glass in a window that is not focused,
+            // so the lime plan card went grey behind its dark type — unreadable
+            // every time another window was in front.
+            GlassBackdrop(shape: shape)
+                .overlay {
+                    if let tint {
+                        outline.fill(tint.opacity(0.92))
+                            .overlay(outline.stroke(rim, lineWidth: 1))
+                    }
+                }
         } else {
-            switch shape {
-            case .rounded(let radius):
-                RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fallback)
-            case .capsule:
-                Capsule().fill(fallback)
-            case .circle:
-                Circle().fill(fallback)
-            }
+            outline.fill(fallback)
+        }
+    }
+
+    private var outline: GlassOutline { GlassOutline(shape: shape) }
+
+    /// The lit edge the glass would draw, which the paint above now covers.
+    private var rim: LinearGradient {
+        let dark = colorScheme == .dark
+        return LinearGradient(
+            colors: [.white.opacity(dark ? 0.35 : 0.7), .white.opacity(0.05),
+                     .white.opacity(dark ? 0.15 : 0.4)],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+    }
+}
+
+/// A ``GlassShape`` as a SwiftUI `Shape`, for what is painted on the glass.
+private struct GlassOutline: Shape {
+    let shape: GlassShape
+
+    func path(in rect: CGRect) -> Path {
+        switch shape {
+        case .rounded(let radius):
+            return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
+        case .capsule:
+            return Capsule().path(in: rect)
+        case .circle:
+            return Circle().path(in: rect)
         }
     }
 }
 
 private struct GlassBackdrop: NSViewRepresentable {
     let shape: GlassShape
-    let tint: NSColor?
 
     func makeNSView(context: Context) -> GlassHost {
         GlassHost()
@@ -111,7 +120,6 @@ private struct GlassBackdrop: NSViewRepresentable {
 
     func updateNSView(_ host: GlassHost, context: Context) {
         host.shape = shape
-        host.tint = tint
     }
 }
 
@@ -125,7 +133,6 @@ final class GlassHost: NSView {
     private let glass: NSView?
 
     var shape: GlassShape = .capsule { didSet { needsLayout = true } }
-    var tint: NSColor? { didSet { if tint != oldValue { setIfPresent(glass, "tintColor", tint) } } }
 
     override init(frame: NSRect) {
         glass = LiquidGlass.viewClass?.init(frame: frame)
@@ -149,96 +156,46 @@ final class GlassHost: NSView {
     }
 }
 
-// MARK: - Panel with a tab
+// MARK: - Glass for shapes that move
 
 extension View {
-    /// Glass for a panel with a half-circle tab standing off the middle of its
-    /// trailing edge. The tab's area lies outside the view's own frame.
+    /// Glass drawn by SwiftUI itself, for surfaces whose size animates.
     ///
-    /// On 26 the panel and a circle centred on its edge sit in one glass
-    /// container, which draws touching glass as a single piece — so the tab is
-    /// a bump grown out of the panel, with the platform's own fillets where
-    /// they meet and one continuous rim. Clipping a separate glass view to a
-    /// half shape instead left its square rim showing as a notch.
-    func mlGlassPanel(radius: CGFloat, tab: CGFloat, fallback: Color) -> some View {
-        background(PanelWithTabBackground(radius: radius, tab: tab, fallback: fallback))
+    /// `NSGlassEffectView` is an AppKit view, and SwiftUI does not animate the
+    /// frame of a hosted AppKit view: while the content slid, the glass under it
+    /// jumped straight to its final size. It also takes only a rounded
+    /// rectangle, so a panel with a tab grown out of its edge had to be two
+    /// pieces with a seam between them. This is one `Shape`, so it can be any
+    /// outline and it moves with the layout, frame by frame: the platform's
+    /// blur material, a wash of the Moonlight surface, and a rim lit from the top.
+    func mlSoftGlass<S: Shape>(_ shape: S, wash: Color, shadow: Bool = false) -> some View {
+        background(SoftGlass(shape: shape, wash: wash, shadow: shadow))
     }
 }
 
-private struct PanelWithTabBackground: View {
-    let radius: CGFloat
-    /// How far the tab stands out; it is twice as tall.
-    let tab: CGFloat
-    let fallback: Color
+private struct SoftGlass<S: Shape>: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let shape: S
+    let wash: Color
+    let shadow: Bool
+
+    private var dark: Bool { colorScheme == .dark }
 
     var body: some View {
-        if LiquidGlass.isAvailable, LiquidGlass.containerClass != nil {
-            PanelWithTabBackdrop(radius: radius, tab: tab)
-                .padding(.trailing, -tab)
-        } else {
-            // Before 26: the same outline, drawn flat — one fill, so the seam
-            // between panel and tab does not show.
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(fallback)
-                .overlay(alignment: .trailing) {
-                    TrailingHalfCapsule()
-                        .fill(fallback)
-                        .frame(width: tab, height: tab * 2)
-                        .offset(x: tab)
-                }
-        }
-    }
-}
-
-private struct PanelWithTabBackdrop: NSViewRepresentable {
-    let radius: CGFloat
-    let tab: CGFloat
-
-    func makeNSView(context: Context) -> PanelWithTabHost { PanelWithTabHost() }
-
-    func updateNSView(_ host: PanelWithTabHost, context: Context) {
-        host.radius = radius
-        host.tab = tab
-    }
-}
-
-final class PanelWithTabHost: NSView {
-    private let container: NSView?
-    private let content = NSView()
-    private let panel: NSView?
-    private let knob: NSView?
-
-    var radius: CGFloat = 18 { didSet { if radius != oldValue { needsLayout = true } } }
-    var tab: CGFloat = 18 { didSet { if tab != oldValue { needsLayout = true } } }
-
-    override init(frame: NSRect) {
-        container = LiquidGlass.containerClass?.init(frame: frame)
-        panel = LiquidGlass.viewClass?.init(frame: frame)
-        knob = LiquidGlass.viewClass?.init(frame: frame)
-        super.init(frame: frame)
-        guard let container, let panel, let knob else { return }
-        content.addSubview(panel)
-        content.addSubview(knob)
-        setIfPresent(container, "contentView", content)
-        if content.superview == nil { container.addSubview(content) }
-        addSubview(container)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    /// Clicks belong to the SwiftUI controls drawn on the glass.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func layout() {
-        super.layout()
-        container?.frame = bounds
-        content.frame = bounds
-        // This view runs `tab` past the panel's trailing edge to make room.
-        let panelFrame = NSRect(x: 0, y: 0, width: max(0, bounds.width - tab), height: bounds.height)
-        panel?.frame = panelFrame
-        knob?.frame = NSRect(x: panelFrame.maxX - tab, y: panelFrame.midY - tab,
-                             width: tab * 2, height: tab * 2)
-        setIfPresent(panel, "cornerRadius", radius)
-        setIfPresent(knob, "cornerRadius", tab)
+        shape
+            .fill(.ultraThinMaterial)
+            .overlay(shape.fill(wash))
+            .overlay(
+                shape.stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(dark ? 0.20 : 0.85),
+                                 .white.opacity(dark ? 0.04 : 0.25),
+                                 .white.opacity(dark ? 0.09 : 0.55)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            )
+            .shadow(color: .black.opacity(shadow ? (dark ? 0.35 : 0.10) : 0), radius: 18, y: 6)
     }
 }

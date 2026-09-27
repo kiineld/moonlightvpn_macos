@@ -115,7 +115,9 @@ private struct Sidebar: View {
         .padding(10)
         .frame(width: collapsed ? 64 : 216)
         .frame(maxHeight: .infinity)
-        .mlGlassPanel(radius: 18, tab: CollapseTab.width, fallback: palette.surface)
+        // One surface, tab included — see `SidebarShape`.
+        .mlSoftGlass(SidebarShape(bump: CollapseTab.width, reach: CollapseTab.reach),
+                     wash: palette.surface.opacity(0.6), shadow: true)
         .overlay(alignment: .trailing) {
             CollapseTab(collapsed: collapsed) { settings.sidebarCollapsed.toggle() }
                 .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
@@ -163,7 +165,8 @@ private struct Sidebar: View {
             }
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .mlGlass(.rounded(12), fallback: palette.text.opacity(0.05))
+            .mlSoftGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
+                         wash: palette.text.opacity(0.04))
         }
         .pressCard()
         .help(planDays)
@@ -225,7 +228,8 @@ private struct Sidebar: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .mlGlass(.rounded(12), fallback: palette.text.opacity(0.05))
+            .mlSoftGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
+                         wash: palette.text.opacity(0.04))
         }
         .pressCard()
     }
@@ -264,10 +268,12 @@ private struct NavItem: View {
             // crossfaded the outgoing item against the incoming one for a few
             // frames — the blink. A selection that moves instantly cannot
             // smear; only the hover wash, which never overlaps a selection, is
-            // worth easing.
+            // worth easing. SwiftUI's own glass, like the sidebar's, so it
+            // narrows with the sidebar instead of snapping.
             .background {
                 if active {
-                    Color.clear.mlGlass(.rounded(12), fallback: palette.text.opacity(0.08))
+                    Color.clear.mlSoftGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
+                                            wash: palette.text.opacity(0.07))
                 } else {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(palette.text.opacity(hovering ? 0.05 : 0))
@@ -282,33 +288,83 @@ private struct NavItem: View {
     }
 }
 
-/// A half-circle tab standing off the sidebar's edge, halfway down, that
-/// collapses and expands it. The chevron points right while the sidebar is
-/// open and left while it is collapsed.
+/// The collapse control: the swell in the sidebar's edge, halfway down.
+///
+/// It has no surface of its own — the swell is part of the sidebar's outline
+/// (`SidebarShape`), so panel and tab are one element. The chevron points
+/// right while the sidebar is open and left while it is collapsed, and turns
+/// between the two rather than being swapped for a different glyph, which
+/// read as the arrow jumping.
 private struct CollapseTab: View {
     @Environment(\.palette) private var palette
     let collapsed: Bool
     let action: () -> Void
 
-    /// A true half circle: twice as tall as it stands out.
-    static let width: CGFloat = 18
-    static let height: CGFloat = 36
+    /// How far the swell stands out past the panel's edge.
+    static let width: CGFloat = 16
+    /// Half the height of the edge that swells.
+    static let reach: CGFloat = 30
 
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            // No surface of its own: the tab's glass is part of the sidebar's,
-            // grown out of its edge (see `mlGlassPanel`).
-            IconView(collapsed ? .chevronLeft : .chevronRight, size: 13, strokeWidth: 2.6)
+            // The frame straddles the edge; the glyph sits in the swell's
+            // visual centre, a little in from its tip.
+            IconView(.chevronRight, size: 12, strokeWidth: 2.6)
+                .rotationEffect(.degrees(collapsed ? 180 : 0))
                 .foregroundStyle(hovering ? palette.accentInk : palette.textMuted)
-                .offset(x: -1)
-                .frame(width: Self.width, height: Self.height)
-                .contentShape(TrailingHalfCapsule())
+                .offset(x: Self.width * 0.4)
+                .frame(width: Self.width * 2, height: Self.reach * 1.6)
+                .contentShape(Rectangle())
         }
-        .pressIcon()
+        .buttonStyle(PressScale(scale: 1))
         .onHover { hovering = $0 }
         .animation(Motion.paint, value: hovering)
+    }
+}
+
+/// The sidebar's outline: a rounded panel whose trailing edge swells out,
+/// halfway down, into the collapse tab.
+///
+/// One path, so the tab is the sidebar and not a second piece laid against it.
+/// The swell leaves the edge along the edge's own tangent and meets it again
+/// the same way, so there is no corner or seam where they join — two curves
+/// out to a rounded tip and two back.
+struct SidebarShape: Shape {
+    var radius: CGFloat = 18
+    /// How far the swell stands out past the edge.
+    var bump: CGFloat
+    /// Half the height of the edge that swells.
+    var reach: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(radius, rect.width / 2, rect.height / 2)
+        let edge = rect.maxX
+        let mid = rect.midY
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
+        path.addLine(to: CGPoint(x: edge - r, y: rect.minY))
+        path.addArc(tangent1End: CGPoint(x: edge, y: rect.minY),
+                    tangent2End: CGPoint(x: edge, y: rect.minY + r), radius: r)
+        path.addLine(to: CGPoint(x: edge, y: mid - reach))
+        path.addCurve(to: CGPoint(x: edge + bump, y: mid),
+                      control1: CGPoint(x: edge, y: mid - reach * 0.42),
+                      control2: CGPoint(x: edge + bump, y: mid - reach * 0.58))
+        path.addCurve(to: CGPoint(x: edge, y: mid + reach),
+                      control1: CGPoint(x: edge + bump, y: mid + reach * 0.58),
+                      control2: CGPoint(x: edge, y: mid + reach * 0.42))
+        path.addLine(to: CGPoint(x: edge, y: rect.maxY - r))
+        path.addArc(tangent1End: CGPoint(x: edge, y: rect.maxY),
+                    tangent2End: CGPoint(x: edge - r, y: rect.maxY), radius: r)
+        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY),
+                    tangent2End: CGPoint(x: rect.minX, y: rect.maxY - r), radius: r)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY),
+                    tangent2End: CGPoint(x: rect.minX + r, y: rect.minY), radius: r)
+        path.closeSubpath()
+        return path
     }
 }
 
