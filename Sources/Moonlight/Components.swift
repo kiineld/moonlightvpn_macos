@@ -85,7 +85,11 @@ private struct RiseIn: ViewModifier {
 
 // MARK: - Containers
 
-/// A surface card: `--ml-surface` behind a hairline, at one of the system radii.
+/// A surface card: `--ml-surface` at one of the system radii.
+///
+/// No outline. The canvas behind every card is `bgDeep`, a step darker than
+/// the surface in both themes, so the fill alone separates them — a hairline
+/// on top of that was a second edge saying the same thing.
 struct Panel<Content: View>: View {
     @Environment(\.palette) private var palette
     var radius: CGFloat = Radii.card
@@ -97,10 +101,6 @@ struct Panel<Content: View>: View {
             .padding(padding)
             .background(palette.surface)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(palette.hairline, lineWidth: 1)
-            )
     }
 }
 
@@ -114,10 +114,26 @@ struct RowGroup<Content: View>: View {
         VStack(spacing: 0) { content }
             .background(palette.surface)
             .clipShape(RoundedRectangle(cornerRadius: Radii.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radii.card, style: .continuous)
-                    .strokeBorder(palette.hairline, lineWidth: 1)
-            )
+    }
+}
+
+/// Content at its own height while it fits, a scroll view once it does not.
+///
+/// A `ScrollView` takes all the height it is offered, so a list of four
+/// servers in one stretched its card to the bottom of the window. On 12 there
+/// is no `ViewThatFits`, and the scroll view is the safe half of the pair.
+struct FitOrScroll<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 13.0, *) {
+            ViewThatFits(in: .vertical) {
+                content
+                ScrollView { content }.mlScrollIndicators(hidden: true)
+            }
+        } else {
+            ScrollView { content }
+        }
     }
 }
 
@@ -268,42 +284,28 @@ struct SegmentedPill<Value: Hashable>: View {
     }
 }
 
-/// A header action: hairline pill, accent-ink label, border lifts on hover.
-struct PillButton: View {
+/// A small round action on glass: accent-ink glyph, no label — the label is
+/// the tooltip.
+struct GlassIconButton: View {
     @Environment(\.palette) private var palette
-    let title: String
-    var icon: Icon?
+    let icon: Icon
     var spinning = false
     var blinking = false
     var action: () -> Void
 
-    @State private var hovering = false
     @State private var phase: Double = 0
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                if let icon {
-                    IconView(icon, size: 16, strokeWidth: 2.2)
-                        .rotationEffect(.degrees(spinning ? phase : 0))
-                        .opacity(blinking ? 0.35 + 0.65 * abs(cos(phase / 90)) : 1)
-                }
-                Text(title).font(.ml(13, .heavy))
-            }
-            .foregroundStyle(palette.accentInk)
-            .padding(.horizontal, 15)
-            .frame(height: 38)
-            .background(palette.surface)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    hovering ? palette.accentLine : palette.hairline, lineWidth: 1
-                )
-            )
+            IconView(icon, size: 15, strokeWidth: 2.2)
+                .rotationEffect(.degrees(spinning ? phase : 0))
+                .opacity(blinking ? 0.35 + 0.65 * abs(cos(phase / 90)) : 1)
+                .foregroundStyle(palette.accentInk)
+                .frame(width: 32, height: 32)
+                .mlGlass(.circle, fallback: palette.surface)
+                .contentShape(Circle())
         }
-        .pressButton()
-        .onHover { hovering = $0 }
-        .animation(Motion.paint, value: hovering)
+        .pressIcon()
         .onAppear { advance() }
         .onChange(of: spinning) { _ in advance() }
         .onChange(of: blinking) { _ in advance() }

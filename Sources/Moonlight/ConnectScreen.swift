@@ -9,149 +9,110 @@ struct ConnectScreen: View {
     @Binding var page: Page
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            dial
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .rise(0, page)
+        VStack(spacing: 0) {
+            hero.rise(0, page)
             serverList
-                .frame(width: 340)
+                .frame(maxWidth: 560)
+                .padding(.top, 34)
                 .rise(0.07, page)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    // MARK: - Dial
+    // MARK: - Hero
 
-    private var dial: some View {
-        Panel(radius: Radii.panel, padding: 24) {
-            VStack(spacing: 20) {
-                Spacer(minLength: 0)
-                DialButton(
-                    state: tunnel.state,
-                    fraction: ringFraction,
-                    statusLabel: statusLabel,
-                    bigLabel: bigLabel,
-                    timer: Format.duration(tunnel.uptime),
-                    enabled: tunnel.hasSubscription
-                ) {
-                    Task { await tunnel.toggle() }
-                }
+    /// How long the tunnel has been up, the one control that matters, and what
+    /// state it is in — nothing else competes for the top of the window.
+    private var hero: some View {
+        VStack(spacing: 0) {
+            Text(L.t(.connectionTime, locale))
+                .font(.ml(12.5, .semibold))
+                .foregroundStyle(palette.text2)
+            Text(Format.duration(tunnel.uptime))
+                .font(.ml(20, .semibold).monospacedDigit())
+                .foregroundStyle(tunnel.state.isConnected ? palette.text : palette.textMuted)
+                .padding(.top, 3)
 
-                HStack(spacing: 9) {
-                    Text(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale))
-                        .font(.ml(TypeScale.meta))
-                        .foregroundStyle(palette.textMuted)
-                    Text("⌘⇧C")
-                        .font(.mlMono(11))
-                        .foregroundStyle(palette.text2)
-                        .padding(.horizontal, 8)
-                        .frame(height: 22)
-                        .background(palette.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: Radii.chip, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Radii.chip, style: .continuous)
-                                .strokeBorder(palette.hairline, lineWidth: 1)
-                        )
-                }
-
-                counters
-                Spacer(minLength: 0)
+            PowerButton(state: tunnel.state, enabled: tunnel.hasSubscription) {
+                Task { await tunnel.toggle() }
             }
-            .frame(maxWidth: .infinity)
+            .help("\(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale)) · ⌘⇧C")
+            .padding(.top, 20)
+
+            StatusPill(
+                title: statusLabel,
+                connected: tunnel.state.isConnected
+            ) {
+                page = .connections
+            }
+            .help(L.t(.titleConnections, locale))
+            .padding(.top, 18)
         }
-    }
-
-    /// What is *left*, not what has been spent. A session's byte counters are
-    /// the least actionable numbers on the screen; how much plan remains is the
-    /// thing people open the app to check.
-    private var counters: some View {
-        HStack(spacing: 0) {
-            counter(L.t(.trafficLeft, locale), trafficLeft)
-            divider
-            counter(L.t(.timeLeft, locale), timeLeft)
-        }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 6)
-        .frame(maxWidth: 420)
-        .background(palette.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private var divider: some View {
-        palette.hairline.frame(width: 1, height: 38)
-    }
-
-    private func counter(_ label: String, _ value: String) -> some View {
-        VStack(spacing: 6) {
-            Overline(text: label)
-            Text(value)
-                .font(.mlDisplay(20))
-                .tracking(TypeScale.trackDisplay * 20)
-                .foregroundStyle(palette.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// The ring is **full when connected**, and sweeps closed as it connects.
-    ///
-    /// It used to show remaining quota, which meant a perfectly healthy tunnel
-    /// drew a ring with a gap in it — and a gap in a status ring reads as a
-    /// fault, not as "you have used some traffic". The quota already has a bar
-    /// of its own in the sidebar, where a partial fill is the point.
-    private var ringFraction: Double {
-        tunnel.state.isConnected ? 1 : 0
-    }
-
-    private var trafficLeft: String {
-        guard tunnel.hasSubscription else { return Format.bytes(0, locale: locale) }
-        guard let total = tunnel.info.total else { return L.t(.unlimited, locale) }
-        return Format.bytes(max(0, total - (tunnel.info.used ?? 0)), locale: locale)
-    }
-
-    private var timeLeft: String {
-        guard tunnel.hasSubscription else { return Format.days(0, locale: locale) }
-        return Format.timeLeft(tunnel.info.expire, locale: locale)
+        // A faint accent bloom while the tunnel is up. It is also what gives
+        // the glass above it something to bend.
+        .background(
+            RadialGradient(
+                colors: [palette.accent.opacity(0.16), palette.accent.opacity(0)],
+                center: .center, startRadius: 0, endRadius: 180
+            )
+            .frame(width: 460, height: 360)
+            .opacity(tunnel.state.isConnected ? 1 : 0)
+            .animation(Motion.enter, value: tunnel.state.isConnected)
+            .allowsHitTesting(false)
+        )
     }
 
     private var statusLabel: String {
         switch tunnel.state {
-        case .connected: return L.t(.secured, locale)
+        case .connected: return L.t(.bigConnected, locale)
         case .connecting: return L.t(.connecting, locale)
         case .disconnecting: return L.t(.disconnecting, locale)
         case .disconnected, .failed: return L.t(.disconnected, locale)
         }
     }
 
-    private var bigLabel: String {
-        tunnel.state.isConnected ? L.t(.bigConnected, locale) : L.t(.bigConnect, locale)
-    }
-
     // MARK: - Servers
 
     private var serverList: some View {
-        Panel(radius: Radii.panel, padding: 16) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Overline(text: L.t(.servers, locale))
-                    Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Overline(text: L.t(.servers, locale))
+                if !tunnel.nodes.isEmpty {
                     Text("\(tunnel.selectableNodes.count) \(L.t(.nodesCount, locale))")
                         .font(.ml(12))
                         .foregroundStyle(palette.textMuted)
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 12)
+                Spacer()
+                // Live whether or not the tunnel is up: with it down the probe
+                // runs through the idle core. Picking a server is exactly when
+                // the latencies matter.
+                GlassIconButton(icon: .activity, blinking: tunnel.isPinging) {
+                    Task { await tunnel.pingAll() }
+                }
+                .help(L.t(tunnel.isPinging ? .pinging : .ping, locale))
+                .disabled(!tunnel.hasSubscription || tunnel.isPinging)
+                .opacity(tunnel.hasSubscription ? 1 : 0.45)
 
+                GlassIconButton(icon: .refreshCW, spinning: tunnel.isRefreshing) {
+                    Task { await tunnel.refresh() }
+                }
+                .help(L.t(tunnel.isRefreshing ? .refreshing : .refresh, locale))
+                .disabled(!tunnel.hasSubscription)
+                .opacity(tunnel.hasSubscription ? 1 : 0.45)
+            }
+            .padding(.horizontal, 6)
+
+            Panel(radius: Radii.card, padding: 8) {
                 if tunnel.nodes.isEmpty {
                     emptyState
                 } else {
-                    autoRow
-                    palette.hairlineSoft
-                        .frame(height: 1)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 8)
-                    ScrollView {
-                        LazyVStack(spacing: 2) {
+                    FitOrScroll {
+                        VStack(spacing: 2) {
+                            autoRow
+                            palette.hairlineSoft
+                                .frame(height: 1)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
                             ForEach(tunnel.selectableNodes) { node in
                                 NodeRow(
                                     node: node,
@@ -163,7 +124,6 @@ struct ConnectScreen: View {
                             }
                         }
                     }
-                    .mlScrollIndicators(hidden: true)
                 }
             }
         }
@@ -171,8 +131,7 @@ struct ConnectScreen: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Spacer()
-            IconView(.globe, size: 34)
+            IconView(.globe, size: 30)
                 .foregroundStyle(palette.textMuted)
             Text(L.t(.noSubscription, locale))
                 .font(.ml(15, .heavy))
@@ -193,10 +152,11 @@ struct ConnectScreen: View {
                     .clipShape(Capsule())
             }
             .pressButton()
-            Spacer()
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
+        .padding(.vertical, 26)
     }
 
     /// The one automatic row.
@@ -240,7 +200,7 @@ struct ConnectScreen: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .background(tunnel.autoSelect ? palette.surface2 : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: Radii.row, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .contentShape(Rectangle())
         }
         .pressCard()
@@ -261,84 +221,101 @@ struct ConnectScreen: View {
     }
 }
 
-// MARK: - Dial
+// MARK: - Power button
 
-private struct DialButton: View {
+/// A glass squircle holding one round control. Off, the circle is neutral and
+/// carries the power glyph; on, it fills with the accent and the glyph becomes
+/// a stop square — the change of state is the change of colour.
+private struct PowerButton: View {
     @Environment(\.palette) private var palette
     let state: ConnectionState
-    let fraction: Double
-    let statusLabel: String
-    let bigLabel: String
-    let timer: String
     let enabled: Bool
     let action: () -> Void
 
-    @State private var breathing = false
+    @State private var hovering = false
 
-    private var tone: Color {
-        state.isConnected ? palette.accentInk : palette.textMuted
-    }
+    private static let tile: CGFloat = 92
+    private static let knob: CGFloat = 58
 
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Halo — a thin accent ring outside the dial that breathes while
-                // the tunnel is up.
                 Circle()
-                    .strokeBorder(palette.accent, lineWidth: 1)
-                    .padding(-10)
-                    .opacity(state.isConnected ? (breathing ? 0.28 : 0.5) : 0)
-                    .scaleEffect(breathing ? 1.012 : 1)
-
-                Circle().strokeBorder(palette.hairline, lineWidth: 2)
-
-                // The quota sweep. Trimmed and rotated rather than drawn with an
-                // angular gradient, so the arc has a true end rather than a seam.
-                Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(palette.accent, style: StrokeStyle(lineWidth: 6, lineCap: .butt))
-                    .rotationEffect(.degrees(-90))
-                    .padding(3)
-
-                VStack(spacing: 7) {
-                    HStack(spacing: 7) {
-                        Circle()
-                            .fill(tone)
-                            .frame(width: 8, height: 8)
-                            .shadow(color: state.isConnected ? palette.accent.opacity(0.7) : .clear,
-                                    radius: 5)
-                        Text(statusLabel.uppercased())
-                            .font(.ml(TypeScale.micro, .heavy))
-                            .tracking(TypeScale.trackOverline * TypeScale.micro)
-                            .foregroundStyle(tone)
-                    }
-                    Text(bigLabel)
-                        .font(.mlDisplay(26))
-                        .tracking(TypeScale.trackDisplay * 26)
-                        .foregroundStyle(palette.text)
-                    Text(timer)
-                        .font(.mlMono(15))
-                        .foregroundStyle(tone)
+                    .fill(state.isConnected ? palette.accent : palette.surface3)
+                    .frame(width: Self.knob, height: Self.knob)
+                    .shadow(color: state.isConnected ? palette.accent.opacity(0.45) : .clear,
+                            radius: 14)
+                if state.isBusy {
+                    SpinnerArc()
+                        .frame(width: Self.knob + 12, height: Self.knob + 12)
                 }
+                glyph
             }
-            .frame(width: 238, height: 238)
-            .contentShape(Circle())
+            .frame(width: Self.tile, height: Self.tile)
+            .mlGlass(.rounded(28), fallback: palette.surface)
+            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
-        .buttonStyle(PressScale(scale: 0.975))
+        .buttonStyle(PressScale(scale: 0.95))
         .disabled(!enabled || state.isBusy)
         .opacity(enabled ? 1 : 0.5)
+        .onHover { hovering = $0 }
         .animation(Motion.enter, value: state)
-        .animation(Motion.enter, value: fraction)
-        .onAppear { startBreathing() }
-        .onChange(of: state) { _ in startBreathing() }
+        .animation(Motion.paint, value: hovering)
     }
 
-    private func startBreathing() {
-        breathing = false
-        guard state.isConnected else { return }
-        withAnimation(.easeInOut(duration: 2.1).repeatForever(autoreverses: true)) {
-            breathing = true
+    @ViewBuilder
+    private var glyph: some View {
+        if state.isConnected {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(palette.textOnAccent)
+                .frame(width: 20, height: 20)
+        } else {
+            IconView(.power, size: 24, strokeWidth: 2.4)
+                .foregroundStyle(hovering && enabled ? palette.accentInk : palette.text)
         }
+    }
+}
+
+/// The arc that turns round the knob while the tunnel is changing state.
+private struct SpinnerArc: View {
+    @Environment(\.palette) private var palette
+    @State private var turning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.28)
+            .stroke(palette.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            .rotationEffect(.degrees(turning ? 360 : 0))
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
+            .onAppear { turning = true }
+    }
+}
+
+/// The state, in words, as a way into the connections screen. Tinted with the
+/// accent while the tunnel is up.
+private struct StatusPill: View {
+    @Environment(\.palette) private var palette
+    let title: String
+    let connected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title).font(.ml(13.5, .bold))
+                IconView(.chevronRight, size: 14, strokeWidth: 2.4)
+            }
+            .foregroundStyle(connected ? palette.accentInkStrong : palette.text2)
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .frame(height: 34)
+            .mlGlass(.capsule,
+                     tint: connected ? palette.accent.opacity(0.22) : nil,
+                     fallback: connected ? palette.accentQuiet : palette.surface)
+            .contentShape(Capsule())
+        }
+        .pressButton()
+        .animation(Motion.paint, value: connected)
     }
 }
 
@@ -392,7 +369,7 @@ private struct NodeRow: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(selected ? palette.surface2 : (hovering ? palette.surface2.opacity(0.6) : .clear))
-            .clipShape(RoundedRectangle(cornerRadius: Radii.row, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .contentShape(Rectangle())
         }
         .pressCard()

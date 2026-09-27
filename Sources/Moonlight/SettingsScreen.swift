@@ -195,6 +195,25 @@ struct SettingsScreen: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 15)
             RowDivider()
+            HStack(spacing: 14) {
+                Text(L.t(.theme, locale))
+                    .font(.ml(14.5, .bold))
+                    .foregroundStyle(palette.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SegmentedPill(
+                    selection: Binding(
+                        get: { settings.theme },
+                        set: { theme in withAnimation(Motion.enter) { settings.theme = theme } }
+                    ),
+                    options: [(Theme.dark, L.t(.themeDark, locale)),
+                              (Theme.light, L.t(.themeLight, locale))],
+                    height: 28
+                )
+                .frame(width: 176)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 15)
+            RowDivider()
             ToggleRow(
                 title: L.t(.notifications, locale),
                 subtitle: L.t(.notificationsSub, locale),

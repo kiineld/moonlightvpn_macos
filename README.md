@@ -76,7 +76,7 @@ with no proxy settings written and no TUN block in its config, so it routes
 nothing. Connecting then only points traffic at a core that is already warm.
 
 That is what makes a latency pass immediate: the outbounds a probe needs already
-exist, so pressing **Пинг** starts measuring instead of starting a core. It is
+exist, so pressing ping starts measuring instead of starting a core. It is
 also how FlClash and Clash Verge Rev behave, and why their ping feels instant.
 
 TUN is the one exception. Its core has to run as root under the helper, so
@@ -322,7 +322,7 @@ Tokens map one-for-one from the source CSS. Dark is lime `#D2FF1F` on slate
 `#101828`; light flips the accent to yellow `#FFE078`. The accent splits into
 four roles that must stay distinct, because light mode depends on it:
 
-- `accent` — fills (buttons, the dial sweep, active pills)
+- `accent` — fills (buttons, the connect knob, active pills)
 - `accentInk` — accent as type or a glyph (`#EFAE2E` in light)
 - `accentInkStrong` — accent type sitting *on* an accent wash
 - `accentLine` — accent as a thin mark (bars, dots, rings)
@@ -336,19 +336,39 @@ renderer only parses `d` strings.
 Fonts are Onest (UI/body) and Unbounded (display) as variable TTFs from Google
 Fonts — the design ships `woff2`, which Core Text cannot register.
 
-The connect dial's ring is **full when connected** and sweeps closed as it
-connects. It used to show remaining quota, which meant a perfectly healthy
-tunnel drew a ring with a gap in it — and a gap in a status ring reads as a
-fault, not as "you have used some traffic". The quota has a bar of its own in
-the sidebar, where a partial fill is the point.
+The connect screen is deliberately bare: how long the tunnel has been up, one
+button, and its state in words. The button is a squircle holding a round knob —
+neutral with a power glyph when off, filled with the accent and carrying a stop
+square when on — so the change of state is a change of colour, not of layout.
+The state pill under it leads to the connections screen. Ping and refresh are
+icon buttons over the server list, the list they act on; the theme switch lives
+in Settings. What is left of the plan sits in the sidebar, the one place it is
+shown.
 
-The two figures under the dial are what is **left** — traffic and time — rather
-than what the session has spent. Session byte counters are the least actionable
-numbers on the screen; how much plan remains is what people open the app to
-check. Time switches to hours under a day, because nine hours reading "1 день"
-is the kind of rounding that loses someone a day of service.
+The window is a flat `bgDeep` canvas with a floating sidebar inset 8pt from its
+edges, starting just under the traffic lights. Cards are `surface` fills with no
+outline — the canvas is a step darker than the surface in both themes, so the
+fill alone separates them. The sidebar collapses to a 60pt icon rail from the
+panel button beside the wordmark.
 
-The sidebar collapses to a 72pt icon rail; the wordmark is the toggle.
+### Liquid Glass
+
+On macOS 26 and later the floating layer — the sidebar, the connect button, the
+state pill, the small icon buttons — is Liquid Glass. Content cards stay flat,
+which is where the platform itself draws the line. Before 26 the same shapes
+are drawn as flat surfaces, at the same sizes, so nothing moves between systems.
+
+The glass is `NSGlassEffectView`, looked up **by name at runtime**
+(`Sources/Moonlight/Glass.swift`). Neither the Command Line Tools this builds
+with nor CI's Xcode ships the macOS 26 SDK, so neither that class nor SwiftUI's
+`glassEffect` exists at compile time — but the class is there at runtime
+whatever SDK the app was linked against, and `style`, `tintColor` and
+`cornerRadius` are plain Objective-C properties that key-value coding reaches
+without headers. Each key is checked with `responds(to:)` first, because KVC
+raises on a key it does not know: a property renamed in some later release costs
+the effect, not the app. The glass view also sits inside a host that returns
+`nil` from `hitTest`, since an `NSView` in a SwiftUI button's label otherwise
+swallows the click.
 
 | | |
 |---|---|
@@ -385,6 +405,7 @@ otherwise use:
 | `MenuBarExtra` | an AppKit `NSStatusItem`, one path for every version |
 | `SMAppService` | a LaunchAgent the app writes into `~/Library/LaunchAgents` |
 | `scrollIndicators` | nothing — the scroller keeps its default behaviour |
+| `ViewThatFits` | a scroll view always — the server list fills its card |
 
 The status item is arguably the better arrangement anyway: its menu is rebuilt
 each time it opens, so the traffic figures and node list are correct at the

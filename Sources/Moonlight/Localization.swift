@@ -25,10 +25,10 @@ public enum L {
         case titleImport, subtitleImport
 
         // Header actions
-        case ping, pinging, refresh, refreshing, theme
+        case ping, pinging, refresh, refreshing, theme, themeDark, themeLight
 
         // Connect
-        case secured, disconnected, connecting, disconnecting
+        case secured, disconnected, connecting, disconnecting, connectionTime
         case bigConnect, bigConnected
         case hintConnect, hintDisconnect
         case downloaded, uploaded, remaining, trafficLeft, timeLeft
@@ -109,11 +109,14 @@ public enum L {
             case .refresh: return "Обновить"
             case .refreshing: return "Обновление"
             case .theme: return "Тема"
+            case .themeDark: return "Тёмная"
+            case .themeLight: return "Светлая"
 
             case .secured: return "Защищено"
             case .disconnected: return "Отключено"
             case .connecting: return "Подключение"
             case .disconnecting: return "Отключение"
+            case .connectionTime: return "Время подключения"
             case .bigConnect: return "Подключить"
             case .bigConnected: return "Подключено"
             case .hintConnect: return "нажмите, чтобы подключиться"
@@ -285,11 +288,14 @@ public enum L {
             case .refresh: return "Refresh"
             case .refreshing: return "Refreshing"
             case .theme: return "Theme"
+            case .themeDark: return "Dark"
+            case .themeLight: return "Light"
 
             case .secured: return "Secured"
             case .disconnected: return "Disconnected"
             case .connecting: return "Connecting"
             case .disconnecting: return "Disconnecting"
+            case .connectionTime: return "Connection time"
             case .bigConnect: return "Connect"
             case .bigConnected: return "Connected"
             case .hintConnect: return "click to connect"

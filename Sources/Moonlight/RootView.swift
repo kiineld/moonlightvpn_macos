@@ -9,31 +9,35 @@ enum Page: Hashable {
 struct RootView: View {
     @EnvironmentObject var tunnel: TunnelController
     @EnvironmentObject var settings: AppSettings
+    /// Where AppKit put the traffic lights, measured rather than assumed.
+    @State private var titleBarCentre: CGFloat = 14
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
     /// `scripts/screenshots.sh`, which cannot click without accessibility
     /// permission, and is inert when unset.
-    /// Where AppKit put the traffic lights, measured rather than assumed.
-    @State private var titleBarCentre: CGFloat = 14
     @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "apps": return .apps; case "settings": return .settings; case "import": return .importSubscription; case "logs": return .logs; case "connections": return .connections; default: return .connect } }()
 
+    /// The gap between the floating sidebar and the window's edges.
+    static let gutter: CGFloat = 8
+
+    /// The traffic lights sit on the bare window above the sidebar, so the
+    /// sidebar starts just under their row. Sized from where AppKit actually
+    /// drew them — their inset is not a documented constant.
+    private var topInset: CGFloat { max(30, titleBarCentre * 2 + 4) }
+
     var body: some View {
-        VStack(spacing: 0) {
-            TitleBar(status: statusLabel, connected: tunnel.state.isConnected,
-                     centre: titleBarCentre)
-            HStack(spacing: 0) {
-                Sidebar(page: $page)
-                VStack(spacing: 0) {
-                    Header(page: $page)
-                    content
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        HStack(spacing: 0) {
+            Sidebar(page: $page)
+                .padding(.leading, Self.gutter)
+                .padding(.bottom, Self.gutter)
+            content
         }
-        .background(settings.palette.bg)
-        // macOS reports the title bar as a top safe-area inset, so without this
-        // the strip is laid out *below* the traffic lights and the wordmark ends
-        // up on its own row. Ignoring the inset puts the content origin at the
-        // top of the window, where the strip can sit around them.
+        .padding(.top, topInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(settings.palette.bgDeep)
+        // macOS reports the title bar as a top safe-area inset. Ignoring it puts
+        // the content origin at the top of the window, so the sidebar can sit
+        // directly under the traffic lights rather than a title bar's height
+        // further down.
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowConfigurator(buttonCentre: $titleBarCentre))
         .environment(\.palette, settings.palette)
@@ -44,85 +48,40 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
-        Group {
-            switch page {
-            case .connect: ConnectScreen(page: $page)
-            case .subscription: SubscriptionScreen(page: $page)
-            case .apps: AppsScreen(page: $page)
-            case .settings: SettingsScreen(page: $page)
-            case .importSubscription: ImportScreen(page: $page)
-            case .logs: LogsScreen(page: $page)
-            case .connections: ConnectionsScreen(page: $page)
+        VStack(spacing: 0) {
+            // The connect screen is its own heading: the button and its status
+            // say more than a title would.
+            if page != .connect { PageHeader(page: page) }
+            Group {
+                switch page {
+                case .connect: ConnectScreen(page: $page)
+                case .subscription: SubscriptionScreen(page: $page)
+                case .apps: AppsScreen(page: $page)
+                case .settings: SettingsScreen(page: $page)
+                case .importSubscription: ImportScreen(page: $page)
+                case .logs: LogsScreen(page: $page)
+                case .connections: ConnectionsScreen(page: $page)
+                }
             }
+            .padding(.horizontal, 28)
+            .padding(.top, page == .connect ? 26 : 18)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // No cross-page transition. Any of them — a crossfade, or `.identity`
         // on the removal — keeps the outgoing screen in the hierarchy for the
         // length of the animation, so the previous page shows *through* the new
         // one and reads as a blink. The screens carry their own entrance
         // instead, which starts only once the old one is already gone.
         .id(page)
-
-    }
-
-    private var statusLabel: String {
-        switch tunnel.state {
-        case .connected: return L.t(.secured, settings.locale)
-        case .connecting: return L.t(.connecting, settings.locale)
-        case .disconnecting: return L.t(.disconnecting, settings.locale)
-        case .disconnected, .failed: return L.t(.disconnected, settings.locale)
-        }
-    }
-}
-
-// MARK: - Title bar
-
-/// The strip the window's traffic lights sit in.
-///
-/// The window uses a hidden title bar, so the system buttons float over this
-/// view's leading edge — hence the leading padding rather than the design's own
-/// drawn circles. Drawing fake ones would give the window two sets.
-///
-/// The height is twice the measured button centre rather than the design's 40,
-/// because AppKit centres the traffic lights itself and gives no supported way
-/// to move them. Sizing the strip from where they actually are is what puts the
-/// wordmark on their line; a fixed height left it a few points below.
-private struct TitleBar: View {
-    @Environment(\.palette) private var palette
-    let status: String
-    let connected: Bool
-    /// The traffic lights' centre. The strip is twice this, so its own centred
-    /// content lands on exactly their line.
-    let centre: CGFloat
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Spacer()
-            Text("moonlight")
-                .font(.ml(12.5, .heavy))
-            Circle()
-                .fill(connected ? palette.accentInk : palette.textMuted)
-                .frame(width: 5, height: 5)
-            Text(status)
-                .font(.ml(12.5, .heavy))
-            Spacer()
-        }
-        .foregroundStyle(palette.textMuted)
-        .padding(.leading, 78)
-        .padding(.trailing, 14)
-        .frame(height: max(28, centre * 2))
-        .frame(maxWidth: .infinity)
-        .background(palette.bgDeep)
-        .overlay(alignment: .bottom) { palette.hairline.frame(height: 1) }
-        .animation(Motion.paint, value: connected)
     }
 }
 
 // MARK: - Sidebar
 
+/// A floating panel inset from the window's edges — glass on macOS 26 and
+/// later, a flat surface before it.
 private struct Sidebar: View {
     @EnvironmentObject var tunnel: TunnelController
     @EnvironmentObject var settings: AppSettings
@@ -133,7 +92,7 @@ private struct Sidebar: View {
     private var collapsed: Bool { settings.sidebarCollapsed }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 2) {
             header
 
             NavItem(icon: .power, title: L.t(.navConnect, locale),
@@ -146,84 +105,75 @@ private struct Sidebar: View {
             NavItem(icon: .activity, title: L.t(.navConnections, locale),
                     active: page == .connections, collapsed: collapsed) { page = .connections }
             NavItem(icon: .settings, title: L.t(.navSettings, locale),
-                    active: page == .settings, collapsed: collapsed) { page = .settings }
+                    active: page == .settings || page == .logs,
+                    collapsed: collapsed) { page = .settings }
 
-            Spacer()
-            if collapsed { collapsedQuota } else { quotaCard }
+            Spacer(minLength: 12)
+            if collapsed { collapsedPlan } else { planCard }
         }
-        .padding(.horizontal, collapsed ? 10 : 14)
-        .padding(.top, 18)
-        .padding(.bottom, 16)
-        .frame(width: collapsed ? 72 : 236)
-        .background(palette.bgDeep)
-        .overlay(alignment: .trailing) { palette.hairline.frame(width: 1) }
+        .padding(10)
+        .frame(width: collapsed ? 60 : 212)
+        .frame(maxHeight: .infinity)
+        .mlGlass(.rounded(18), fallback: palette.surface)
         .animation(Motion.slide, value: collapsed)
     }
 
-    /// The header carries its own collapse control.
-    ///
-    /// The wordmark used to be the toggle, which worked but advertised nothing —
-    /// a control with no affordance is a control nobody finds. The panel icon is
-    /// the same one every sidebar on the platform uses, so it needs no
-    /// explaining.
+    /// The header carries its own collapse control — the panel icon every
+    /// sidebar on the platform uses, so it needs no explaining. Collapsed there
+    /// is no room beside the logo, so it takes its own line under it.
+    @ViewBuilder
     private var header: some View {
-        HStack(spacing: 10) {
-            LogoTile(size: 32, radius: 10)
-            if !collapsed {
+        if collapsed {
+            VStack(spacing: 10) {
+                LogoTile(size: 28, radius: 9)
+                collapseButton
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+        } else {
+            HStack(spacing: 9) {
+                LogoTile(size: 28, radius: 9)
                 Text("moonlight")
-                    .font(.mlDisplay(17, .bold))
-                    .tracking(-0.025 * 17)
+                    .font(.mlDisplay(15, .bold))
+                    .tracking(-0.025 * 15)
                     .foregroundStyle(palette.text)
                     .fixedSize()
                 Spacer(minLength: 0)
                 collapseButton
             }
+            .padding(.leading, 4)
+            .padding(.top, 4)
+            .padding(.bottom, 16)
         }
-        .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
-        .padding(.horizontal, collapsed ? 0 : 6)
-        .padding(.bottom, collapsed ? 8 : 14)
-        .overlay(alignment: .bottom) {
-            // Collapsed there is no room beside the logo, so the control takes
-            // its own line under it.
-            if collapsed {
-                collapseButton.offset(y: 34)
-            }
-        }
-        .padding(.bottom, collapsed ? 34 : 0)
     }
 
     private var collapseButton: some View {
-        Button {
+        HoverIconButton(icon: collapsed ? .panelLeftOpen : .panelLeftClose) {
             settings.sidebarCollapsed.toggle()
-        } label: {
-            IconView(collapsed ? .panelLeftOpen : .panelLeftClose, size: 17)
-                .foregroundStyle(palette.textMuted)
-                .frame(width: 30, height: 30)
-                .background(palette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
-        .pressIcon()
         .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
     }
 
-    /// At 72pt there is no room for a card, but the plan still has to be
+    /// Collapsed there is no room for the card, but the plan still has to be
     /// glanceable — so it becomes the bar alone.
-    private var collapsedQuota: some View {
+    private var collapsedPlan: some View {
         Button {
             page = .subscription
         } label: {
-            VStack(spacing: 6) {
-                IconView(.sparkles, size: 16)
+            VStack(spacing: 7) {
+                IconView(.sparkles, size: 15)
                     .foregroundStyle(tunnel.info.isActive ? palette.accentInk : palette.danger)
-                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 4)
-                    .frame(width: 34)
+                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 3)
+                    .frame(width: 26)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(palette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(palette.text.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .pressCard()
+        .help(planDays)
     }
 
     /// With no subscription there is nothing to be unknown *about*, so the
@@ -248,51 +198,50 @@ private struct Sidebar: View {
             + " " + L.t(.trafficOf, locale)
     }
 
-    private var quotaCard: some View {
+    private var planCard: some View {
         Button {
             page = .subscription
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(spacing: 6) {
                     Overline(text: L.t(.remainingCaps, locale))
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 6)
                     if tunnel.hasSubscription {
+                        let tone = tunnel.info.isActive ? palette.accentInk : palette.danger
+                        Circle().fill(tone).frame(width: 6, height: 6)
                         Text(L.t(tunnel.info.isActive ? .active : .expired, locale))
-                            .font(.ml(10.5, .heavy))
-                            .foregroundStyle(palette.textOnAccent)
-                            .padding(.horizontal, 9)
-                            .frame(height: 22)
-                            .background(tunnel.info.isActive ? palette.accent : palette.danger)
-                            .clipShape(Capsule())
+                            .font(.ml(11.5, .bold))
+                            .foregroundStyle(tone)
                     }
                 }
                 Text(planDays)
-                    .font(.mlDisplay(22))
-                    .tracking(TypeScale.trackDisplay * 22)
+                    .font(.mlDisplay(17))
+                    .tracking(TypeScale.trackDisplay * 17)
                     .foregroundStyle(palette.text)
-                    .padding(.top, 8)
-                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 6)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.top, 7)
+                QuotaBar(used: tunnel.hasSubscription ? tunnel.info.usedFraction : 0, height: 4)
                     .padding(.top, 10)
                 Text(quotaLine)
-                    .font(.ml(12))
+                    .font(.ml(11.5))
                     .foregroundStyle(palette.textMuted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .padding(.top, 8)
             }
-            .padding(14)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(palette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(palette.hairline, lineWidth: 1)
-            )
+            .background(palette.text.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .pressCard()
     }
 }
 
+/// A sidebar row: a small glyph and a label, with a quiet wash behind the
+/// current page. The accent is spent on the active glyph only — a lime slab per
+/// row was the loudest thing in the window.
 private struct NavItem: View {
     @Environment(\.palette) private var palette
     let icon: Icon
@@ -305,39 +254,28 @@ private struct NavItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                IconView(icon, size: 19)
+            HStack(spacing: 10) {
+                IconView(icon, size: 16)
+                    .foregroundStyle(active ? palette.accentInk : palette.text2)
                 if !collapsed {
-                    Text(title).font(.ml(14, .heavy)).fixedSize()
+                    Text(title)
+                        .font(.ml(13.5, .semibold))
+                        .foregroundStyle(active ? palette.text : palette.text2)
+                        .fixedSize()
                     Spacer(minLength: 0)
                 }
             }
-            // Hover shifts the label to accent ink as well as washing the
-            // background: on the near-white light sidebar a background tint
-            // alone is barely a change, and the design's hover language is a
-            // colour shift rather than a fill.
-            .foregroundStyle(active ? palette.textOnAccent
-                             : (hovering ? palette.accentInk : palette.text2))
-            .padding(.horizontal, 12)
-            .frame(height: 44)
-            // `surface` is white in light mode, which on the near-white sidebar
-            // reads as a smudge rather than a hover. The accent wash is a tint in
-            // both themes.
-            // The active fill is *not* animated. Animating it crossfaded the
-            // outgoing item's accent against the incoming one's, and the two
-            // translucent fills met as a muddy olive for a few frames — the
+            .padding(.horizontal, collapsed ? 0 : 10)
+            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+            .frame(height: 34)
+            // The active wash is *not* animated. Animating it crossfaded the
+            // outgoing item against the incoming one for a few frames — the
             // blink. A selection that moves instantly cannot smear; only the
             // hover wash, which never overlaps a selection, is worth easing.
-            .background(active
-                        ? palette.accent
-                        : (hovering ? palette.accentQuiet : .clear))
-            .overlay(
-                Capsule().strokeBorder(
-                    hovering && !active ? palette.accentLine.opacity(0.5) : .clear,
-                    lineWidth: 1
-                )
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(palette.text.opacity(active ? 0.08 : (hovering ? 0.04 : 0)))
             )
-            .clipShape(Capsule())
             .contentShape(Rectangle())
         }
         .pressCard()
@@ -347,66 +285,52 @@ private struct NavItem: View {
     }
 }
 
-// MARK: - Header
-
-private struct Header: View {
-    @EnvironmentObject var tunnel: TunnelController
-    @EnvironmentObject var settings: AppSettings
+/// A bare glyph that gains a wash on hover — for controls that should be
+/// findable without being part of the composition.
+struct HoverIconButton: View {
     @Environment(\.palette) private var palette
-    @Environment(\.appLocale) private var locale
-    @Binding var page: Page
+    let icon: Icon
+    var size: CGFloat = 28
+    let action: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(L.t(title, locale))
-                    .font(.mlDisplay(20))
-                    .tracking(TypeScale.trackDisplay * 20)
-                    .foregroundStyle(palette.text)
-                Text(L.t(subtitle, locale))
-                    .font(.ml(TypeScale.meta))
-                    .foregroundStyle(palette.textMuted)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            PillButton(
-                title: L.t(tunnel.isPinging ? .pinging : .ping, locale),
-                icon: .activity,
-                blinking: tunnel.isPinging
-            ) {
-                Task { await tunnel.pingAll() }
-            }
-            // Live whether or not the tunnel is up: with it down the probe runs
-            // through a throwaway core on its own ports. Picking a server is
-            // exactly when the latencies matter.
-            .disabled(!tunnel.hasSubscription || tunnel.isPinging)
-            .opacity(tunnel.hasSubscription ? 1 : 0.45)
-
-            PillButton(
-                title: L.t(tunnel.isRefreshing ? .refreshing : .refresh, locale),
-                icon: .refreshCW,
-                spinning: tunnel.isRefreshing
-            ) {
-                Task { await tunnel.refresh() }
-            }
-            .disabled(!tunnel.hasSubscription)
-            .opacity(tunnel.hasSubscription ? 1 : 0.45)
-
-            Button {
-                settings.toggleTheme()
-            } label: {
-                IconView(settings.theme == .dark ? .sun : .moon, size: 17)
-                    .foregroundStyle(palette.text2)
-                    .frame(width: 38, height: 38)
-                    .background(palette.surface2)
-                    .clipShape(Circle())
-            }
-            .pressIcon()
-            .accessibilityLabel(L.t(.theme, locale))
+        Button(action: action) {
+            IconView(icon, size: 16)
+                .foregroundStyle(hovering ? palette.text : palette.textMuted)
+                .frame(width: size, height: size)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(palette.text.opacity(hovering ? 0.06 : 0))
+                )
         }
-        .padding(.horizontal, 24)
-        .frame(height: 64)
-        .overlay(alignment: .bottom) { palette.hairlineSoft.frame(height: 1) }
+        .pressIcon()
+        .onHover { hovering = $0 }
+        .animation(Motion.paint, value: hovering)
+    }
+}
+
+// MARK: - Page header
+
+private struct PageHeader: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let page: Page
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L.t(title, locale))
+                .font(.mlDisplay(20))
+                .tracking(TypeScale.trackDisplay * 20)
+                .foregroundStyle(palette.text)
+            Text(L.t(subtitle, locale))
+                .font(.ml(TypeScale.meta))
+                .foregroundStyle(palette.textMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 28)
+        .padding(.top, 12)
     }
 
     private var title: L.Key {

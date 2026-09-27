@@ -5,18 +5,15 @@ import AppKit
 ///
 /// `.windowStyle(.hiddenTitleBar)` hides the title and makes the bar
 /// transparent, but SwiftUI still lays the content out *below* the reserved
-/// title bar area. The result is the app's own title strip sitting under the
-/// traffic lights rather than around them — the wordmark ends up on its own row,
-/// which is exactly what it looked like.
+/// title bar area, which leaves a dead band across the whole window.
 ///
 /// `.fullSizeContentView` is what moves the content origin to the top of the
-/// window, so the 28pt strip in `RootView` overlaps the title bar and its text
-/// lands on the same line as the buttons.
+/// window, so the page can run up beside the traffic lights while the floating
+/// sidebar starts just under them.
 /// It also reports where AppKit actually put the traffic lights. Their inset is
-/// not a documented constant and differs with the style mask, so the strip is
-/// sized from the measured button centre rather than from an assumed titlebar
-/// height — that is what guarantees the wordmark shares their line instead of
-/// landing a few points below it.
+/// not a documented constant and differs with the style mask, so `RootView`
+/// sizes its top inset from the measured button centre rather than from an
+/// assumed titlebar height.
 struct WindowConfigurator: NSViewRepresentable {
     /// Distance from the top of the window to the centre of the close button.
     @Binding var buttonCentre: CGFloat
