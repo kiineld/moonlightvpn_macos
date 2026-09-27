@@ -12,6 +12,7 @@ struct MoonlightApp: App {
     @StateObject private var logs = LogStore.shared
 
     init() {
+        SingleInstance.enforce()
         Fonts.register()
     }
 
@@ -26,16 +27,7 @@ struct MoonlightApp: App {
                     delegate.settings = settings
                     delegate.attachStatusItem()
                 }
-                .task {
-                    // A subscription cached from a previous launch gives the
-                    // server list something to show before the network answers.
-                    if tunnel.hasSubscription {
-                        await tunnel.refresh()
-                        // The core is warmed by the controller itself; this only
-                        // decides whether traffic is routed through it.
-                        if settings.autoConnect { await tunnel.connect() }
-                    }
-                }
+                .task { await LaunchTasks.runOnce(tunnel: tunnel, settings: settings) }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -124,29 +116,55 @@ enum MenuBarIcon {
 
 // MARK: - Delegate
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var tunnel: TunnelController?
     var settings: AppSettings?
     private var statusItem: StatusItemController?
+    private var alerts: SubscriptionAlerts?
+    private var quitting = false
 
     /// Built once both objects exist, which is when the root view appears.
     @MainActor
     func attachStatusItem() {
         guard statusItem == nil, let tunnel, let settings else { return }
         statusItem = StatusItemController(tunnel: tunnel, settings: settings)
+        alerts = SubscriptionAlerts(tunnel: tunnel, settings: settings)
     }
 
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UNUserNotificationCenter.current()
-            .requestAuthorization(options: [.alert, .sound]) { _, _ in }
         NSApp.setActivationPolicy(.regular)
+
+        // The app starts at login when the setting says so and only then. A
+        // menu bar app is still running at shutdown, so macOS's "reopen windows
+        // when logging back in" brought it back regardless of the switch —
+        // which read as the switch not working. The login item is the one way
+        // in, and it is registered only while the switch is on.
+        NSApp.disableRelaunchOnLogin()
+
+        if LoginLaunch.detect() {
+            LoginLaunch.hideFirstWindow = true
+            let menuBarIcon = settings?.menuBarIcon ?? Preferences.shared.menuBarIcon
+            if let window = NSApp.mainWindowCandidate {
+                LoginLaunch.hideFirstWindow = false
+                LoginLaunch.tuck(window, menuBarIcon: menuBarIcon)
+            }
+        }
+
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().delegate = self
+        }
     }
 
-    /// Clicking the Dock icon with no window open reopens one, which is the
-    /// macOS convention and the only way back from "close to menu bar".
+    /// Clicking the Dock icon with no window showing brings one back, which is
+    /// the macOS convention and the only way back from "close to menu bar". A
+    /// window hidden at login still exists and is shown; one that was closed is
+    /// gone, and returning `true` lets SwiftUI make a new one.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows { NSApp.windows.first?.makeKeyAndOrderFront(nil) }
-        return true
+        guard !hasVisibleWindows, let window = NSApp.mainWindowCandidate else { return true }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        return false
     }
 
     /// Closing the window keeps the tunnel up when the menu bar icon is on —
@@ -158,13 +176,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The tunnel must come down with the app: a core left running would keep
     /// the machine's proxy pointing at a process nothing owns.
-    func applicationWillTerminate(_ notification: Notification) {
-        guard let tunnel else { return }
-        let semaphore = DispatchSemaphore(value: 0)
+    ///
+    /// Deferred rather than awaited in `applicationWillTerminate`. That used to
+    /// block the main thread on a semaphore while the disconnect waited for
+    /// that same main thread, so every quit stalled for the full eight-second
+    /// timeout and then exited with the tunnel still up. `.terminateLater` keeps
+    /// the run loop turning until the teardown has actually finished.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let tunnel else { return .terminateNow }
+        // A second ⌘Q during the teardown waits for the one already under way
+        // rather than cutting it short.
+        guard !quitting else { return .terminateLater }
+        quitting = true
         Task { @MainActor in
-            await tunnel.disconnect()
-            semaphore.signal()
+            await tunnel.shutdown()
+            NSApp.reply(toApplicationShouldTerminate: true)
         }
-        _ = semaphore.wait(timeout: .now() + 8)
+        // A teardown that hangs must not make the app unquittable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    /// Banners show while the app is frontmost too — the default is to drop
+    /// them, which is exactly when someone is looking at the plan.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 }

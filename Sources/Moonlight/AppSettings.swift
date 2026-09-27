@@ -21,13 +21,29 @@ final class AppSettings: ObservableObject {
         didSet { preferences.sidebarCollapsed = sidebarCollapsed }
     }
 
+    /// Whether the app starts at login — as the *system* has it, not as a
+    /// preference remembers it.
+    ///
+    /// It used to be only the preference, so the switch and reality drifted
+    /// apart: a registration that failed (normal for an app run from outside
+    /// /Applications) left the switch on with nothing registered, and an item
+    /// registered by an older build stayed registered under a switch showing
+    /// off. Now the switch is read from the system at launch, and after each
+    /// change it settles on what the system actually did.
     @Published var launchAtLogin: Bool {
         didSet {
-            guard launchAtLogin != preferences.launchAtLogin else { return }
-            preferences.launchAtLogin = launchAtLogin
+            guard launchAtLogin != oldValue, !settlingLaunchAtLogin else { return }
             applyLaunchAtLogin()
+            let actual = Self.systemLaunchAtLogin ?? launchAtLogin
+            preferences.launchAtLogin = actual
+            if actual != launchAtLogin {
+                settlingLaunchAtLogin = true
+                launchAtLogin = actual
+                settlingLaunchAtLogin = false
+            }
         }
     }
+    private var settlingLaunchAtLogin = false
 
     /// Bumped after the helper is installed or removed, so views that read
     /// `helperInstalled` (which is a filesystem check, not a published value)
@@ -44,7 +60,19 @@ final class AppSettings: ObservableObject {
         autoConnect = preferences.autoConnect
         menuBarIcon = preferences.menuBarIcon
         sidebarCollapsed = preferences.sidebarCollapsed
-        launchAtLogin = preferences.launchAtLogin
+        launchAtLogin = Self.systemLaunchAtLogin ?? preferences.launchAtLogin
+        preferences.launchAtLogin = launchAtLogin
+    }
+
+    /// What will actually happen at the next login.
+    private static var systemLaunchAtLogin: Bool? {
+        if #available(macOS 13.0, *) {
+            switch SMAppService.mainApp.status {
+            case .enabled, .requiresApproval: return true
+            default: return false
+            }
+        }
+        return FileManager.default.fileExists(atPath: launchAgentURL.path)
     }
 
     func bumpHelperState() { helperGeneration += 1 }
@@ -82,9 +110,8 @@ final class AppSettings: ObservableObject {
 
     /// The macOS 12 path: a LaunchAgent in the user's own directory.
     private func applyLaunchAgent() {
-        let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
-        let plist = directory.appendingPathComponent("\(Self.launchAgentLabel).plist")
+        let plist = Self.launchAgentURL
+        let directory = plist.deletingLastPathComponent()
 
         guard launchAtLogin else {
             _ = try? FileManager.default.removeItem(at: plist)
@@ -94,7 +121,9 @@ final class AppSettings: ObservableObject {
         let executable = Bundle.main.executableURL?.path ?? ""
         let document: [String: Any] = [
             "Label": Self.launchAgentLabel,
-            "ProgramArguments": [executable],
+            // The flag is how the app knows to start tucked away: a
+            // LaunchAgent start carries no login-item launch event.
+            "ProgramArguments": [executable, LoginLaunch.argument],
             "RunAtLoad": true,
             // Not KeepAlive: this starts the app at login, it does not resurrect
             // an app the user deliberately quit.
@@ -112,5 +141,11 @@ final class AppSettings: ObservableObject {
     }
 
     private static let launchAgentLabel = "vpn.moonlight.desktop.login"
+
+    private static var launchAgentURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+            .appendingPathComponent("\(launchAgentLabel).plist")
+    }
 
 }

@@ -336,6 +336,22 @@ public final class TunnelController: ObservableObject {
         await ensureCoreRunning()
     }
 
+    /// Everything down, for quitting: routing *and* the idle core.
+    ///
+    /// ``disconnect()`` deliberately leaves the core running, which is right
+    /// while the app is open and wrong once it is leaving — a child outlives its
+    /// parent, so the core went on holding the controller port (and, while
+    /// connected, carrying traffic) until the next launch reaped it.
+    public func shutdown() async {
+        if state != .disconnected {
+            state = .disconnecting
+            LogStore.shared.client("Quitting — bringing the tunnel down")
+            await teardown()
+            state = .disconnected
+        }
+        core.stop()
+    }
+
     /// Stops routing. Teardown runs in the reverse order of ``connect()``: proxy
     /// settings go back before the core stops, so no window exists where the
     /// machine points at a listener that is already gone.

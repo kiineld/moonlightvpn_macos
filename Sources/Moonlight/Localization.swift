@@ -83,6 +83,9 @@ public enum L {
         // Updates
         case updateChecking, updateUpToDate, updateAvailable, updateDownloading
         case updateInstalling, updateInstall, updateFailed
+        // Notifications
+        case notifyExpiringTitle, notifyExpiringBody, notifyExpiredTitle, notifyExpiredBody
+        case notifyTrafficLowTitle, notifyTrafficLowBody, notifyTrafficOutTitle, notifyTrafficOutBody
 
         var ru: String {
             switch self {
@@ -260,6 +263,14 @@ public enum L {
             case .updateInstalling: return "Установка и перезапуск…"
             case .updateInstall: return "Обновить"
             case .updateFailed: return "Не удалось обновить"
+            case .notifyExpiringTitle: return "Подписка заканчивается"
+            case .notifyExpiringBody: return "Осталось {days}. Продлите её в боте, чтобы не остаться без VPN."
+            case .notifyExpiredTitle: return "Подписка закончилась"
+            case .notifyExpiredBody: return "Продлите её в боте, чтобы снова подключиться."
+            case .notifyTrafficLowTitle: return "Трафик почти закончился"
+            case .notifyTrafficLowBody: return "Осталось {left} из {total}."
+            case .notifyTrafficOutTitle: return "Трафик закончился"
+            case .notifyTrafficOutBody: return "Продлите подписку в боте, чтобы снова подключиться."
             }
         }
 
@@ -439,6 +450,14 @@ public enum L {
             case .updateInstalling: return "Installing and restarting…"
             case .updateInstall: return "Update"
             case .updateFailed: return "Update failed"
+            case .notifyExpiringTitle: return "Your subscription is ending"
+            case .notifyExpiringBody: return "{days} left. Renew it in the bot to stay connected."
+            case .notifyExpiredTitle: return "Your subscription has ended"
+            case .notifyExpiredBody: return "Renew it in the bot to connect again."
+            case .notifyTrafficLowTitle: return "Traffic is running out"
+            case .notifyTrafficLowBody: return "{left} left of {total}."
+            case .notifyTrafficOutTitle: return "You are out of traffic"
+            case .notifyTrafficOutBody: return "Renew the subscription in the bot to connect again."
             }
         }
     }

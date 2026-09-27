@@ -117,7 +117,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openWindow() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        if let window = NSApp.mainWindowCandidate {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // SwiftUI discards a window once it is closed, so after "close to
+            // menu bar" there was nothing here to bring forward and the item did
+            // nothing. A reopen event — which is what opening our own bundle
+            // sends a running app — is what makes it build a new one.
+            NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

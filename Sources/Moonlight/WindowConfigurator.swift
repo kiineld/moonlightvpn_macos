@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MoonlightCore
 
 /// Forces the window to draw its content under the title bar.
 ///
@@ -36,6 +37,12 @@ struct WindowConfigurator: NSViewRepresentable {
         window.titleVisibility = .hidden
         // With no title bar to grab, the strip itself has to be the drag handle.
         window.isMovableByWindowBackground = true
+
+        // A login launch starts tucked away rather than in the user's face.
+        if LoginLaunch.hideFirstWindow {
+            LoginLaunch.hideFirstWindow = false
+            LoginLaunch.tuck(window, menuBarIcon: Preferences.shared.menuBarIcon)
+        }
 
         guard let button = window.standardWindowButton(.closeButton),
               let content = window.contentView else { return }
