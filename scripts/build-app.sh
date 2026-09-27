@@ -45,9 +45,11 @@ case "$ARCH" in
   *)         ARCH_FLAGS=(--arch "$ARCH") ;;
 esac
 
+# `${a[@]+"${a[@]}"}` rather than `"${a[@]}"`: under `set -u`, the bash 3.2
+# that macOS ships calls an empty array unbound, and a native build has no flags.
 echo "▸ swift build ($ARCH)"
-swift build -c release "${ARCH_FLAGS[@]}"
-BIN_DIR="$(swift build -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
+swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
+BIN_DIR="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"
 
 echo "▸ assembling $APP"
 rm -rf "$APP"
