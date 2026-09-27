@@ -583,6 +583,14 @@ public final class TunnelController: ObservableObject {
         }
         nodes = listed
         restoreLatencies()
+
+        // A server chosen under an earlier subscription may be gone from this
+        // one. Left pointing at nothing, the picker read "Авто" with no row
+        // picked; automatic is what would effectively happen, so it says so.
+        if !autoSelect, let chosen = selectedNode, !listed.contains(where: { $0.name == chosen }) {
+            autoSelect = true
+            preferences.autoSelect = true
+        }
     }
 
     private func reloadRunningCore() async throws {
@@ -636,10 +644,15 @@ public final class TunnelController: ObservableObject {
         pendingProbes = Set(nodes.map(\.name))
         defer { pendingProbes = [] }
 
-        let measured = await api.delays(nodes: nodes.map(\.name)) { name, delay in
+        let names = nodes.map(\.name)
+        let measured = await api.delays(nodes: names) { name, delay in
             await Self.record(name: name, delay: delay, on: self)
         }
-        preferences.latencies = measured
+        // Timeouts are remembered too, as -1, so a node that was down still
+        // reads `n/a` after a relaunch rather than looking never checked.
+        var saved = measured
+        for name in names where measured[name] == nil { saved[name] = -1 }
+        preferences.latencies = saved
         if autoSelect { await applySelection() }
     }
 
@@ -648,6 +661,7 @@ public final class TunnelController: ObservableObject {
         controller.pendingProbes.remove(name)
         guard let index = controller.nodes.firstIndex(where: { $0.name == name }) else { return }
         controller.nodes[index].latency = delay
+        controller.nodes[index].unreachable = delay == nil
     }
 
     /// Puts the last measured numbers back after the node list is rebuilt, so a
@@ -655,8 +669,10 @@ public final class TunnelController: ObservableObject {
     private func restoreLatencies() {
         let saved = preferences.latencies
         guard !saved.isEmpty else { return }
-        for index in nodes.indices where nodes[index].latency == nil {
-            nodes[index].latency = saved[nodes[index].name]
+        for index in nodes.indices
+        where nodes[index].latency == nil && !nodes[index].unreachable {
+            guard let value = saved[nodes[index].name] else { continue }
+            if value > 0 { nodes[index].latency = value } else { nodes[index].unreachable = true }
         }
     }
 

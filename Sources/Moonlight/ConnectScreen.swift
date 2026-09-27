@@ -8,6 +8,18 @@ struct ConnectScreen: View {
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
 
+    /// Whether the server drawer is open.
+    @State private var serversOpen = false
+    /// The drawer's natural height, measured, so it opens to exactly its
+    /// content rather than to a guess.
+    @State private var drawerContent: CGFloat = 0
+
+    /// One curve for everything the drawer moves: its height, its fade and the
+    /// chevron — a spring, so the list settles instead of stopping dead.
+    private static let drawer = Animation.spring(response: 0.42, dampingFraction: 0.86)
+    private static let pickerHeight: CGFloat = 60
+    private static let drawerGap: CGFloat = 10
+
     var body: some View {
         VStack(spacing: 0) {
             hero.rise(0, page)
@@ -116,31 +128,112 @@ struct ConnectScreen: View {
             }
             .padding(.horizontal, 6)
 
-            Panel(radius: Radii.card, padding: 8) {
-                if tunnel.nodes.isEmpty {
-                    emptyState
-                } else {
-                    FitOrScroll {
-                        VStack(spacing: 2) {
-                            autoRow
-                            palette.hairlineSoft
-                                .frame(height: 1)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                            ForEach(tunnel.selectableNodes) { node in
-                                NodeRow(
-                                    node: node,
-                                    selected: !tunnel.autoSelect && node.name == tunnel.selectedNode,
-                                    measuring: tunnel.pendingProbes.contains(node.name)
-                                ) {
-                                    Task { await tunnel.select(node: node.name) }
-                                }
-                            }
-                        }
+            if tunnel.nodes.isEmpty {
+                Panel(radius: Radii.card, padding: 8) { emptyState }
+            } else {
+                // The drawer may use whatever height is left under the picker;
+                // past that it scrolls.
+                GeometryReader { geometry in
+                    VStack(spacing: Self.drawerGap) {
+                        picker
+                        drawer(room: geometry.size.height - Self.pickerHeight - Self.drawerGap)
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
         }
+    }
+
+    // MARK: - Picker
+
+    /// The server in use, and the way into the rest — as on the phone: one row
+    /// until it is opened.
+    private var picker: some View {
+        Button {
+            withAnimation(Self.drawer) { serversOpen.toggle() }
+        } label: {
+            HStack(spacing: 12) {
+                pickedGlyph
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(palette.text.opacity(0.06)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(picked.title)
+                        .font(.ml(14.5, .heavy))
+                        .foregroundStyle(palette.text)
+                        .lineLimit(1)
+                    Text(picked.subtitle)
+                        .font(.ml(12))
+                        .foregroundStyle(palette.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                IconView(.chevronRight, size: 15, strokeWidth: 2.4)
+                    .foregroundStyle(palette.text2)
+                    .rotationEffect(.degrees(serversOpen ? -90 : 90))
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 20)
+            .frame(height: Self.pickerHeight)
+            .mlGlass(.capsule, fallback: palette.surface)
+            .contentShape(Capsule())
+        }
+        .pressCard()
+    }
+
+    @ViewBuilder
+    private var pickedGlyph: some View {
+        if let node = pickedNode, let flag = node.flag {
+            Text(flag).font(.system(size: 20))
+        } else {
+            IconView(.zap, size: 18, strokeWidth: 2.2).foregroundStyle(palette.accentInk)
+        }
+    }
+
+    /// The node the picker names: the chosen one, or none while "Авто" is.
+    private var pickedNode: Node? {
+        guard !tunnel.autoSelect, let name = tunnel.selectedNode else { return nil }
+        return tunnel.nodes.first { $0.name == name }
+    }
+
+    private var picked: (title: String, subtitle: String) {
+        if let node = pickedNode { return (node.title, node.subtitle(locale)) }
+        return (L.t(.auto, locale), autoSubtitle)
+    }
+
+    // MARK: - Drawer
+
+    /// Every server, under the picker. Always in the hierarchy — only its
+    /// height moves, from nothing to its measured content, so opening is one
+    /// continuous motion rather than a list popping in and a card resizing
+    /// after it.
+    private func drawer(room: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: 2) {
+                autoRow
+                ForEach(tunnel.selectableNodes) { node in
+                    NodeRow(
+                        node: node,
+                        selected: !tunnel.autoSelect && node.name == tunnel.selectedNode,
+                        measuring: tunnel.pendingProbes.contains(node.name)
+                    ) {
+                        Task { await tunnel.select(node: node.name) }
+                        withAnimation(Self.drawer) { serversOpen = false }
+                    }
+                }
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: DrawerHeightKey.self, value: proxy.size.height)
+                }
+            )
+        }
+        .mlScrollIndicators(hidden: true)
+        .onPreferenceChange(DrawerHeightKey.self) { drawerContent = $0 }
+        .padding(8)
+        .frame(height: serversOpen ? max(0, min(drawerContent + 16, room)) : 0, alignment: .top)
+        .mlGlass(.rounded(Radii.card), fallback: palette.surface)
+        .opacity(serversOpen ? 1 : 0)
+        .allowsHitTesting(serversOpen)
     }
 
     private var emptyState: some View {
@@ -181,6 +274,7 @@ struct ConnectScreen: View {
     private var autoRow: some View {
         Button {
             Task { await tunnel.selectAuto() }
+            withAnimation(Self.drawer) { serversOpen = false }
         } label: {
             HStack(spacing: 12) {
                 IconView(.zap, size: 18, strokeWidth: 2.2)
@@ -201,10 +295,10 @@ struct ConnectScreen: View {
                 if let auto = tunnel.panelAutoNode {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(auto.latency.map { palette.pingColor($0) } ?? palette.textMuted)
+                            .fill(latencyTone(auto, palette))
                             .frame(width: 6, height: 6)
                         Text(tunnel.pendingProbes.contains(auto.name)
-                             ? "…" : Format.latency(auto.latency))
+                             ? "…" : Format.latency(auto.latency, unreachable: auto.unreachable))
                             .font(.mlMono(12.5))
                             .foregroundStyle(palette.text2)
                     }
@@ -228,7 +322,8 @@ struct ConnectScreen: View {
         // the thing the row cannot otherwise tell you.
         if tunnel.autoSelect, let name = tunnel.selectedNode,
            let node = tunnel.nodes.first(where: { $0.name == name }), !node.isAutoPicker {
-            return "\(L.t(.autoPicked, locale)) \(node.title) · \(Format.latency(node.latency))"
+            return "\(L.t(.autoPicked, locale)) \(node.title) · "
+                + Format.latency(node.latency, unreachable: node.unreachable)
         }
         if let auto = tunnel.panelAutoNode, let label = auto.protocolLabel {
             return label
@@ -375,9 +470,9 @@ private struct NodeRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 5) {
                     Circle()
-                        .fill(node.latency.map { palette.pingColor($0) } ?? palette.textMuted)
+                        .fill(latencyTone(node, palette))
                         .frame(width: 6, height: 6)
-                    Text(measuring ? "…" : Format.latency(node.latency))
+                    Text(measuring ? "…" : Format.latency(node.latency, unreachable: node.unreachable))
                         .font(.mlMono(12.5))
                         .foregroundStyle(palette.text2)
                 }
@@ -398,5 +493,20 @@ private struct NodeRow: View {
         .onHover { hovering = $0 }
         .animation(Motion.paint, value: selected)
         .animation(Motion.paint, value: hovering)
+    }
+}
+
+/// The dot beside a latency: the ping colour when measured, the danger colour
+/// when the probe timed out, muted when not measured yet.
+private func latencyTone(_ node: Node, _ palette: Palette) -> Color {
+    if let latency = node.latency { return palette.pingColor(latency) }
+    return node.unreachable ? palette.danger : palette.textMuted
+}
+
+/// The drawer's content height, reported from inside its scroll view.
+private struct DrawerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

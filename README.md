@@ -425,12 +425,22 @@ icon buttons over the server list, the list they act on; the theme switch lives
 in Settings. What is left of the plan sits in the sidebar, the one place it is
 shown.
 
+The server list works as on the phone: a pill naming the server in use, which
+opens into the full list beneath it. The list is always in the hierarchy and
+only its height moves — from nothing to its measured content, capped to the
+window and scrolling past that — on a spring, so opening is one continuous
+motion. Picking a server closes it. A latency reads `–` until the server has
+been probed, and `n/a` only once a probe got no answer within 5000 ms; timeouts
+are remembered across launches like the numbers are.
+
 The window is a `bgDeep` canvas with two soft washes bleeding in from opposite
 corners, and a floating sidebar inset 8pt from its edges, starting just under
 the traffic lights. Cards carry no outline — the canvas is a step darker than
 any surface on it in both themes, so the surface alone separates them. The
 sidebar collapses to a 64pt icon rail from the half-circle tab halfway down its
-edge; the tab's chevron points right while it is open and left while collapsed.
+edge; the tab's chevron points the way a click moves it — left to collapse,
+right to open. Collapsing is animated where it is triggered, so the page
+beside the sidebar moves with it instead of jumping to its new width.
 
 ### Liquid Glass
 

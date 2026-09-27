@@ -119,12 +119,21 @@ private struct Sidebar: View {
         .mlSoftGlass(SidebarShape(bump: CollapseTab.width, reach: CollapseTab.reach),
                      wash: palette.surface.opacity(0.6), shadow: true)
         .overlay(alignment: .trailing) {
-            CollapseTab(collapsed: collapsed) { settings.sidebarCollapsed.toggle() }
-                .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
-                .offset(x: CollapseTab.width)
+            CollapseTab(collapsed: collapsed) {
+                // Animated at the source, not on the sidebar: an `.animation`
+                // attached here moved only the sidebar, and the page beside it
+                // jumped to its new width while the sidebar was still sliding.
+                // One transaction moves everything that depends on the width,
+                // on one curve — a spring without overshoot, because the whole
+                // page rides on it.
+                withAnimation(Self.resize) { settings.sidebarCollapsed.toggle() }
+            }
+            .help(L.t(collapsed ? .expandSidebar : .collapseSidebar, locale))
+            .offset(x: CollapseTab.width)
         }
-        .animation(Motion.slide, value: collapsed)
     }
+
+    private static let resize = Animation.spring(response: 0.42, dampingFraction: 0.9)
 
     /// The wordmark, or the logo alone when collapsed. The collapse control is
     /// the tab on the sidebar's edge, not a button in here.
@@ -291,10 +300,10 @@ private struct NavItem: View {
 /// The collapse control: the swell in the sidebar's edge, halfway down.
 ///
 /// It has no surface of its own — the swell is part of the sidebar's outline
-/// (`SidebarShape`), so panel and tab are one element. The chevron points
-/// right while the sidebar is open and left while it is collapsed, and turns
-/// between the two rather than being swapped for a different glyph, which
-/// read as the arrow jumping.
+/// (`SidebarShape`), so panel and tab are one element. The chevron points the
+/// way a click will move the sidebar — left to collapse it, right to open it —
+/// and turns between the two rather than being swapped for a different glyph,
+/// which read as the arrow jumping.
 private struct CollapseTab: View {
     @Environment(\.palette) private var palette
     let collapsed: Bool
@@ -312,7 +321,7 @@ private struct CollapseTab: View {
             // The frame straddles the edge; the glyph sits in the swell's
             // visual centre, a little in from its tip.
             IconView(.chevronRight, size: 12, strokeWidth: 2.6)
-                .rotationEffect(.degrees(collapsed ? 180 : 0))
+                .rotationEffect(.degrees(collapsed ? 0 : 180))
                 .foregroundStyle(hovering ? palette.accentInk : palette.textMuted)
                 .offset(x: Self.width * 0.4)
                 .frame(width: Self.width * 2, height: Self.reach * 1.6)
