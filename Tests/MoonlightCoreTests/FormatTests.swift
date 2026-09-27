@@ -47,10 +47,15 @@ func formatTests() {
         Check.equal(Format.quota(used: 1_073_741_824, total: 0, locale: .en),
                     "1.0\u{00A0}GB · unlimited", "a zero total is unlimited")
 
-        // n/a rather than a dash: a dash reads as "not measured yet", and the
-        // two are worth telling apart when one means the node is down.
-        Check.equal(Format.latency(nil), "n/a", "an unanswered node reads n/a, not 0 ms")
+        // A dash reads as "not measured yet" and n/a as "measured, no answer";
+        // the two are worth telling apart when one means the node is down.
+        Check.equal(Format.latency(nil), "–", "a node not probed yet is a dash, not n/a")
+        Check.equal(Format.latency(nil, unreachable: true), "n/a",
+                    "a probe that timed out reads n/a, not 0 ms")
         Check.equal(Format.latency(24), "24 ms", "latency")
+        Check.equal(Format.latency(24, unreachable: true), "24 ms",
+                    "a fresh answer outranks an old timeout")
+        Check.equal(MihomoAPI.probeTimeout, 5000, "n/a means no answer within 5000 ms")
     }
 }
 

@@ -122,9 +122,11 @@ public enum Format {
         return "\(seconds / 3600) \(locale == .ru ? "ч" : "h")"
     }
 
-    public static func latency(_ ms: Int?, locale: AppLocale = .ru) -> String {
-        guard let ms else { return "n/a" }
-        return "\(ms) ms"
+    /// "24 ms"; "n/a" for a node whose probe timed out; a dash for one not
+    /// measured yet. Only a probe that ran and got nothing says `n/a`.
+    public static func latency(_ ms: Int?, unreachable: Bool = false, locale: AppLocale = .ru) -> String {
+        if let ms { return "\(ms) ms" }
+        return unreachable ? "n/a" : "–"
     }
 
     /// "1 сентября" — the reset/expiry date line on the subscription card.

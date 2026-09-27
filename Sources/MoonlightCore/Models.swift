@@ -7,9 +7,13 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
     public var name: String
     public var type: String
     public var server: String?
-    /// Latency in milliseconds, from the last probe. Nil means never measured —
-    /// which the UI shows as `n/a`, not as `0 ms`.
+    /// Latency in milliseconds, from the last probe that answered.
     public var latency: Int?
+    /// The last probe got no answer within ``MihomoAPI/probeTimeout`` — the node
+    /// is down or too slow to use. Kept apart from a nil ``latency``, which
+    /// alone only means *not measured yet*: the two used to read the same, so
+    /// every node showed `n/a` before anything had been checked.
+    public var unreachable: Bool
     /// True for a `url-test`, `fallback` or `load-balance` group the panel put in
     /// its selector. Those are choices the operator built deliberately — a
     /// balancer across several nodes, or an auto-picker — and hiding them leaves
@@ -20,13 +24,15 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
 
     public init(
         name: String, type: String, server: String? = nil,
-        latency: Int? = nil, isGroup: Bool = false, protocolLabel: String? = nil
+        latency: Int? = nil, unreachable: Bool = false,
+        isGroup: Bool = false, protocolLabel: String? = nil
     ) {
         self.protocolLabel = protocolLabel
         self.name = name
         self.type = type
         self.server = server
         self.latency = latency
+        self.unreachable = unreachable
         self.isGroup = isGroup
     }
 

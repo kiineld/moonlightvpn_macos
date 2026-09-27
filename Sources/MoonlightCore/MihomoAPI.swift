@@ -42,6 +42,10 @@ public actor MihomoAPI {
     /// round trip that has nothing to do with it. It answers `204` with an empty
     /// body from a global anycast address, so the number is about the node
     /// rather than about which continent the target happens to be on.
+    /// How long a probe waits before calling the node unreachable. Past this a
+    /// node is too slow to be worth choosing, and it reads `n/a`.
+    public static let probeTimeout = 5000
+
     public static let probeURL = "http://cp.cloudflare.com/generate_204"
 
     private let base: URL
@@ -112,16 +116,19 @@ public actor MihomoAPI {
                   let type = entry["type"] as? String else { return nil }
 
             // `history` is the core's own record of past delay probes; its last
-            // entry is what the UI shows until a fresh probe replaces it.
+            // entry is what the UI shows until a fresh probe replaces it. A zero
+            // there is a probe that timed out; no history is no probe at all.
             var latency: Int?
+            var unreachable = false
             if let history = entry["history"] as? [[String: Any]],
-               let last = history.last, let delay = last["delay"] as? Int, delay > 0 {
-                latency = delay
+               let last = history.last, let delay = last["delay"] as? Int {
+                if delay > 0 { latency = delay } else { unreachable = true }
             }
             return Node(
                 name: name,
                 type: type,
                 latency: latency,
+                unreachable: unreachable,
                 isGroup: Self.groupTypes.contains(type.lowercased())
             )
         }
@@ -147,7 +154,7 @@ public actor MihomoAPI {
     public func delay(
         node: String,
         url: String = MihomoAPI.probeURL,
-        timeout: Int = 3000
+        timeout: Int = MihomoAPI.probeTimeout
     ) async -> Int? {
         var components = URLComponents(string: base.absoluteString + "/proxies/\(escape(node))/delay")
         components?.queryItems = [
