@@ -26,18 +26,31 @@ import Foundation
 /// exactly when the third earns its place.
 public struct SubscriptionClient: Sendable {
 
+    /// What went wrong, worded for a log line — the app shows its own
+    /// localised text for each case (`TunnelIssue`), never these.
+    ///
+    /// Nothing here names the service behind the link or repeats the link: the
+    /// log is on screen, and the link is a credential.
     public enum Failure: LocalizedError, Equatable {
         case badURL
         case http(Int)
         case empty
         case unusable(String)
+        /// The account is at its device limit. Remnawave answers this with a
+        /// *200* and an empty body, so without the header it read as an empty
+        /// subscription. Carries the service's own explanation, if it sent one.
+        case deviceLimit(announce: String?)
+        /// The service requires a device identifier this request did not pass.
+        case deviceNotSupported
 
         public var errorDescription: String? {
             switch self {
             case .badURL: return "Subscription link is not a valid http(s) URL"
-            case .http(let code): return "Panel returned HTTP \(code)"
-            case .empty: return "Panel returned an empty subscription"
+            case .http(let code): return "Subscription server returned HTTP \(code)"
+            case .empty: return "Subscription is empty"
             case .unusable(let why): return why
+            case .deviceLimit: return "Device limit reached for this subscription"
+            case .deviceNotSupported: return "Subscription requires a device identifier"
             }
         }
     }
@@ -98,6 +111,10 @@ public struct SubscriptionClient: Sendable {
                 }
                 return Result(yaml: body, info: info,
                               source: suffix == "mihomo" ? .mihomo : .clash)
+            } catch let failure as Failure where failure.isAboutTheAccount {
+                // Every endpoint would say the same; trying the next one only
+                // turns a clear answer into a vague one.
+                throw failure
             } catch {
                 lastError = error
             }
@@ -140,10 +157,23 @@ public struct SubscriptionClient: Sendable {
         let (data, response) = try await send(url)
         guard let http = response as? HTTPURLResponse else { throw Failure.empty }
         guard (200..<300).contains(http.statusCode) else { throw Failure.http(http.statusCode) }
+        let info = SubscriptionInfo.fromHeaders(http)
+        // Checked before the body: at the limit the body is empty, or is a
+        // placeholder "node" whose name is the explanation.
+        if Self.flag(http, "x-hwid-max-devices-reached") {
+            throw Failure.deviceLimit(announce: info.announce)
+        }
+        if Self.flag(http, "x-hwid-not-supported") {
+            throw Failure.deviceNotSupported
+        }
         guard let body = String(data: data, encoding: .utf8), !body.isEmpty else {
             throw Failure.empty
         }
-        return (body, SubscriptionInfo.fromHeaders(http))
+        return (body, info)
+    }
+
+    private static func flag(_ response: HTTPURLResponse, _ name: String) -> Bool {
+        response.value(forHTTPHeaderField: name)?.lowercased() == "true"
     }
 
     private func send(_ url: URL) async throws -> (Data, URLResponse) {
@@ -214,13 +244,17 @@ public struct DeviceIdentity: Sendable {
 
 public extension SubscriptionInfo {
 
-    /// Parses the two headers every panel implements consistently.
+    /// Parses the headers a Remnawave subscription response carries.
     ///
     /// `subscription-userinfo: upload=0; download=0; total=0; expire=0`
-    /// `profile-title: <utf8 or base64:…>`
+    /// `profile-title`, `announce` — text, plain or `base64:<payload>`
+    /// `profile-web-page-url`, `support-url` — links
+    /// `profile-update-interval` — hours
+    /// `subscription-refill-date` — unix seconds of the next traffic reset
     ///
     /// A zero `total` or `expire` means *unlimited* in this format, not zero, so
-    /// both map to nil rather than to 0.
+    /// both map to nil rather than to 0. `content-disposition` names the account
+    /// and `routing` is a routing profile for another client; neither is read.
     static func fromHeaders(_ response: HTTPURLResponse) -> SubscriptionInfo {
         var info = SubscriptionInfo()
 
@@ -244,7 +278,24 @@ public extension SubscriptionInfo {
         }
 
         if let title = response.value(forHTTPHeaderField: "profile-title") {
-            info.title = Self.decodeTitle(title)
+            info.title = Self.text(title)
+        }
+        if let announce = response.value(forHTTPHeaderField: "announce") {
+            info.announce = Self.text(announce)
+        }
+        if let raw = response.value(forHTTPHeaderField: "profile-web-page-url") {
+            info.webPageURL = Self.link(raw, schemes: ["https", "http"])
+        }
+        if let raw = response.value(forHTTPHeaderField: "support-url") {
+            info.supportURL = Self.link(raw, schemes: ["https", "http", "tg", "mailto"])
+        }
+        if let raw = response.value(forHTTPHeaderField: "profile-update-interval"),
+           let hours = Int(raw.trimmingCharacters(in: .whitespaces)), hours > 0 {
+            info.updateIntervalHours = hours
+        }
+        if let raw = response.value(forHTTPHeaderField: "subscription-refill-date"),
+           let seconds = TimeInterval(raw.trimmingCharacters(in: .whitespaces)), seconds > 0 {
+            info.refillDate = Date(timeIntervalSince1970: seconds)
         }
         return info
     }
@@ -256,16 +307,23 @@ public extension SubscriptionInfo {
         let response = (root?["response"] as? [String: Any]) ?? root ?? [:]
         let user = (response["user"] as? [String: Any]) ?? response
 
+        // The account's username is deliberately not read: it is the service's
+        // handle for the user, not a plan name, and has no place on screen.
         var info = SubscriptionInfo()
-        info.title = user["username"] as? String
         info.download = (user["trafficUsed"] as? NSNumber)?.int64Value
             ?? (user["usedTrafficBytes"] as? NSNumber)?.int64Value
         if let limit = (user["trafficLimit"] as? NSNumber)?.int64Value
             ?? (user["trafficLimitBytes"] as? NSNumber)?.int64Value, limit > 0 {
             info.total = limit
         }
-        if let expire = user["expiresAt"] as? String {
-            info.expire = ISO8601DateFormatter.remnawave.date(from: expire)
+        if let raw = user["expiresAt"] as? String,
+           let expire = ISO8601DateFormatter.remnawave.date(from: raw)
+            ?? ISO8601DateFormatter.remnawaveWhole.date(from: raw) {
+            // Remnawave spells "never expires" as a date in 2099 — its own
+            // headers send 0 for it. Read literally, it showed a plan with
+            // 26 892 days left.
+            info.expire = Calendar(identifier: .gregorian).component(.year, from: expire) >= 2099
+                ? nil : expire
         }
         if let limit = (user["hwidDeviceLimit"] as? NSNumber)?.intValue, limit > 0 {
             info.deviceLimit = limit
@@ -287,21 +345,50 @@ public extension SubscriptionInfo {
             total: other.total ?? total,
             expire: other.expire ?? expire,
             deviceLimit: other.deviceLimit ?? deviceLimit,
-            devicesUsed: other.devicesUsed ?? devicesUsed
+            devicesUsed: other.devicesUsed ?? devicesUsed,
+            webPageURL: other.webPageURL ?? webPageURL,
+            supportURL: other.supportURL ?? supportURL,
+            updateIntervalHours: other.updateIntervalHours ?? updateIntervalHours,
+            announce: other.announce ?? announce,
+            refillDate: other.refillDate ?? refillDate
         )
     }
 
-    private static func decodeTitle(_ raw: String) -> String {
-        // Panels send this either plain or as `base64:<payload>`, and some send
-        // bare base64 with no prefix.
-        if raw.lowercased().hasPrefix("base64:") {
-            let payload = String(raw.dropFirst("base64:".count))
+    /// A text header, plain or `base64:<payload>` — which is how Remnawave
+    /// renders any value its operator wrapped in `rwEncodeBase64:`. Tolerates
+    /// URL-safe alphabet and missing padding. Empty reads as absent.
+    static func text(_ raw: String) -> String? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.lowercased().hasPrefix("base64:") {
+            var payload = String(value.dropFirst("base64:".count))
+                .replacingOccurrences(of: "-", with: "+")
+                .replacingOccurrences(of: "_", with: "/")
+            payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
             if let data = Data(base64Encoded: payload),
-               let text = String(data: data, encoding: .utf8) {
-                return text
+               let decoded = String(data: data, encoding: .utf8) {
+                value = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-        return raw
+        return value.isEmpty ? nil : value
+    }
+
+    /// A link header, accepted only with one of the expected schemes — the app
+    /// opens these on a click, so a `file:` or custom-scheme value is dropped.
+    static func link(_ raw: String, schemes: Set<String>) -> URL? {
+        guard let text = text(raw), let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), schemes.contains(scheme) else { return nil }
+        return url
+    }
+}
+
+extension SubscriptionClient.Failure {
+    /// Failures that are an answer about the account rather than about one
+    /// endpoint.
+    var isAboutTheAccount: Bool {
+        switch self {
+        case .deviceLimit, .deviceNotSupported: return true
+        default: return false
+        }
     }
 }
 
@@ -309,6 +396,14 @@ extension ISO8601DateFormatter {
     static let remnawave: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    /// The same without fractional seconds, which the fractional formatter
+    /// rejects outright rather than treating as `.000`.
+    static let remnawaveWhole: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
 }

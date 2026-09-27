@@ -118,6 +118,15 @@ public final class Updater: ObservableObject {
     /// Writes the swap script, detaches it, and quits.
     private func swap(using image: URL) throws {
         let bundle = Bundle.main.bundleURL
+        // Checked *before* quitting. Run from the DMG, or from the read-only
+        // copy macOS translocates a quarantined download to, the bundle cannot
+        // be replaced — the script failed after the app had already gone, and
+        // the user was left with no app at all.
+        let parent = bundle.deletingLastPathComponent().path
+        guard !bundle.path.contains("/AppTranslocation/"),
+              FileManager.default.isWritableFile(atPath: parent) else {
+            throw Failure.notReplaceable
+        }
         let script = FileManager.default.temporaryDirectory
             .appendingPathComponent("moonlight-update-\(UUID().uuidString).sh")
 
@@ -125,24 +134,28 @@ public final class Updater: ObservableObject {
         // attributes and any signature, which a plain copy strips.
         let body = """
         #!/bin/sh
-        set -e
-        # Wait for the app to actually exit before touching its bundle.
-        for _ in $(seq 1 100); do
+        # Wait for the app to actually exit before touching its bundle. Longer
+        # than the app's own quit takes, including a TUN teardown.
+        for _ in $(seq 1 200); do
           kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null || break
           sleep 0.1
         done
 
+        # Whatever fails from here, the user gets an app back: the old one.
+        fail() { open '\(bundle.path)'; exit 1; }
+
         mount=$(mktemp -d)
-        hdiutil attach -nobrowse -readonly -noverify -quiet -mountpoint "$mount" '\(image.path)'
+        hdiutil attach -nobrowse -readonly -noverify -quiet -mountpoint "$mount" '\(image.path)' || fail
         trap 'hdiutil detach "$mount" -force >/dev/null 2>&1' EXIT
+        [ -d "$mount/Moonlight.app" ] || fail
 
         rm -rf '\(bundle.path).old'
-        mv '\(bundle.path)' '\(bundle.path).old'
+        mv '\(bundle.path)' '\(bundle.path).old' || fail
         if ! ditto "$mount/Moonlight.app" '\(bundle.path)'; then
           # Put the old one back rather than leaving the user with no app.
           rm -rf '\(bundle.path)'
           mv '\(bundle.path).old' '\(bundle.path)'
-          exit 1
+          fail
         fi
         rm -rf '\(bundle.path).old'
         xattr -dr com.apple.quarantine '\(bundle.path)' 2>/dev/null || true
@@ -167,11 +180,14 @@ public final class Updater: ObservableObject {
     enum Failure: LocalizedError {
         case badResponse
         case noAsset
+        case notReplaceable
 
         var errorDescription: String? {
             switch self {
             case .badResponse: return "GitHub did not answer with a release"
             case .noAsset: return "That release has no universal build attached"
+            case .notReplaceable:
+                return "Move Moonlight to the Applications folder, then update"
             }
         }
     }

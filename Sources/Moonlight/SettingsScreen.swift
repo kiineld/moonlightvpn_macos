@@ -172,7 +172,53 @@ struct SettingsScreen: View {
                 subtitle: L.t(.autoConnectSub, locale),
                 isOn: $settings.autoConnect
             )
+            RowDivider()
+            autoUpdateRow
         }
+    }
+
+    /// How often the subscription refreshes itself. The choice lives under
+    /// the title rather than beside it: five options do not fit next to a
+    /// label in half the window.
+    private var autoUpdateRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L.t(.autoUpdate, locale))
+                    .font(.ml(14.5, .bold))
+                    .foregroundStyle(palette.text)
+                Text(autoUpdateSubtitle)
+                    .font(.ml(12))
+                    .foregroundStyle(palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            SegmentedPill(
+                selection: Binding(
+                    get: {
+                        TunnelController.autoUpdateChoice(
+                            nearest: settings.autoUpdateHours ?? tunnel.info.updateIntervalHours ?? 24)
+                    },
+                    set: { hours in
+                        settings.autoUpdateHours = hours
+                        Task { await tunnel.refreshIfDue() }
+                    }
+                ),
+                options: TunnelController.autoUpdateChoices.map { hours in
+                    (hours, hours == 0
+                        ? L.t(.autoUpdateOff, locale)
+                        : "\(hours) \(L.t(.hoursShort, locale))")
+                },
+                height: 28
+            )
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 15)
+    }
+
+    private var autoUpdateSubtitle: String {
+        guard tunnel.hasSubscription else { return L.t(.autoUpdateSub, locale) }
+        let last = tunnel.lastRefresh.map { "\(L.t(.lastUpdated, locale)) \(L.ago($0, locale))" }
+            ?? L.t(.neverUpdated, locale)
+        return "\(L.t(.autoUpdateSub, locale)) · \(last)"
     }
 
     // MARK: - App
@@ -242,7 +288,8 @@ struct SettingsScreen: View {
                 subtitle: L.t(.supportSub, locale),
                 trailing: .externalLink
             ) {
-                NSWorkspace.shared.open(AppConfig.supportURL)
+                // The subscription's own support contact when it names one.
+                NSWorkspace.shared.open(tunnel.info.supportURL ?? AppConfig.supportURL)
             }
             RowDivider(leading: 74)
             ActionRow(

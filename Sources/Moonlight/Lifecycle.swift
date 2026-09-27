@@ -66,10 +66,16 @@ enum LaunchTasks {
     static func runOnce(tunnel: TunnelController, settings: AppSettings) async {
         guard !done else { return }
         done = true
-        // A subscription cached from a previous launch gives the server list
-        // something to show before the network answers.
         guard tunnel.hasSubscription else { return }
-        await tunnel.refresh()
+        // A subscription cached from a previous launch gives the server list
+        // something to show before the network answers, so launch only
+        // refreshes when the schedule says it is due — "off" means off. With
+        // nothing cached there is nothing to run, and it refreshes regardless.
+        if tunnel.hasCachedSubscription {
+            await tunnel.refreshIfDue()
+        } else {
+            await tunnel.refresh()
+        }
         // The core is warmed by the controller itself; this only decides
         // whether traffic is routed through it.
         if settings.autoConnect { await tunnel.connect() }
@@ -82,5 +88,37 @@ extension NSApplication {
     /// the status bar's, which made "open" do nothing visible.
     var mainWindowCandidate: NSWindow? {
         windows.first { $0.canBecomeMain && !($0 is NSPanel) }
+    }
+}
+
+/// Refreshes the subscription on the interval chosen in Settings.
+///
+/// A timer that only compares dates unless something is due, plus a check on
+/// wake — a Mac asleep through the due time would otherwise wait for the next
+/// tick after it opens.
+@MainActor
+final class SubscriptionScheduler {
+    private let tunnel: TunnelController
+    private var timer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+
+    init(tunnel: TunnelController) {
+        self.tunnel = tunnel
+        let timer = Timer(timeInterval: 5 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.tunnel.refreshIfDue() }
+        }
+        timer.tolerance = 60
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                // The network takes a few seconds to come back after wake.
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                await self?.tunnel.refreshIfDue()
+            }
+        }
     }
 }

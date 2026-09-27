@@ -38,6 +38,8 @@ public final class Preferences: @unchecked Sendable {
         static let cachedInfo = "cachedSubscriptionInfo"
         static let proxySnapshot = "proxySnapshot"
         static let latencies = "latencies"
+        static let autoUpdateHours = "subscriptionAutoUpdateHours"
+        static let lastRefresh = "subscriptionLastRefresh"
     }
 
     public var subscriptionURL: String? {
@@ -171,6 +173,21 @@ public final class Preferences: @unchecked Sendable {
     public var latencies: [String: Int] {
         get { defaults.dictionary(forKey: Key.latencies) as? [String: Int] ?? [:] }
         set { defaults.set(newValue, forKey: Key.latencies) }
+    }
+
+    /// How often the subscription refreshes on its own, in hours; 0 is never.
+    /// Nil until the user picks one — until then the service's own
+    /// `profile-update-interval` applies (see ``TunnelController``).
+    public var autoUpdateHours: Int? {
+        get { defaults.object(forKey: Key.autoUpdateHours) as? Int }
+        set { defaults.set(newValue, forKey: Key.autoUpdateHours) }
+    }
+
+    /// When the subscription last refreshed successfully. Kept across launches
+    /// so the auto-update schedule does not restart from zero every time.
+    public var lastRefresh: Date? {
+        get { defaults.object(forKey: Key.lastRefresh) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastRefresh) }
     }
 
     /// The machine's proxy settings from before this app touched them.

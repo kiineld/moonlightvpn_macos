@@ -11,9 +11,15 @@ struct ConnectScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             hero.rise(0, page)
+            if let announce = tunnel.info.announce {
+                AnnounceBanner(text: announce)
+                    .frame(maxWidth: 560)
+                    .padding(.top, 28)
+                    .rise(0.05, page)
+            }
             serverList
                 .frame(maxWidth: 560)
-                .padding(.top, 34)
+                .padding(.top, 28)
                 .rise(0.07, page)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -47,6 +53,14 @@ struct ConnectScreen: View {
             }
             .help(L.t(.titleConnections, locale))
             .padding(.top, 18)
+
+            // Why it is not connected, or why the list may be stale — a failed
+            // connect used to leave only "Отключено", with the reason in the log.
+            if let issue = tunnel.issue {
+                IssueLine(issue: issue, centered: true)
+                    .frame(maxWidth: 440)
+                    .padding(.top, 14)
+            }
         }
         // A faint accent bloom while the tunnel is up. It is also what gives
         // the glass above it something to bend.

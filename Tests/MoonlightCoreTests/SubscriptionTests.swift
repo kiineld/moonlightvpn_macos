@@ -78,7 +78,7 @@ func subscriptionInfoTests() {
         "expiresAt":"2027-01-01T00:00:00.000Z","hwidDeviceLimit":5},"devicesUsed":2}}
         """
         let info = try! SubscriptionInfo.fromRemnawaveInfo(Data(json.utf8))
-        Check.equal(info.title, "Luna", "username")
+        Check.isNil(info.title, "the username is never shown as the plan name")
         Check.equal(info.total, 107_374_182_400, "traffic limit")
         Check.equal(info.deviceLimit, 5, "hwid device limit")
         Check.equal(info.devicesUsed, 2, "devices used")

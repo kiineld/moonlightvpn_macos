@@ -12,6 +12,8 @@ struct ImportScreen: View {
     @State private var link = ""
     @State private var done = false
     @State private var working = false
+    /// This screen's own failure — not whatever went wrong last elsewhere.
+    @State private var failure: TunnelIssue?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -40,12 +42,21 @@ struct ImportScreen: View {
                     .focused($focused)
                     .onSubmit { submit() }
                 Button(action: submit) {
-                    Text(L.t(.importAdd, locale))
-                        .font(.ml(13, .heavy))
-                        .foregroundStyle(palette.textOnAccent)
-                        .padding(.horizontal, 18)
-                        .frame(height: 40)
-                        .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
+                    // The fetch can take seconds; a button that only greys out
+                    // looks like it did nothing.
+                    Group {
+                        if working {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text(L.t(.importAdd, locale))
+                        }
+                    }
+                    .font(.ml(13, .heavy))
+                    .foregroundStyle(palette.textOnAccent)
+                    .padding(.horizontal, 18)
+                    .frame(minWidth: 96)
+                    .frame(height: 40)
+                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
                 }
                 .pressButton()
                 .disabled(link.trimmingCharacters(in: .whitespaces).isEmpty || working)
@@ -70,10 +81,10 @@ struct ImportScreen: View {
                 }
             }
 
-            if let error = tunnel.lastError {
+            if let failure {
                 HStack(spacing: 8) {
                     IconView(.circleAlert, size: 16)
-                    Text(error)
+                    Text(L.issue(failure, locale))
                         .font(.ml(TypeScale.meta))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -88,11 +99,14 @@ struct ImportScreen: View {
         let candidate = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty, !working else { return }
         working = true
+        failure = nil
         Task {
             let ok = await tunnel.importSubscription(candidate)
             working = false
             if ok {
                 withAnimation(Motion.enter) { done = true }
+            } else {
+                failure = tunnel.issue ?? .serverUnavailable(code: nil)
             }
         }
     }

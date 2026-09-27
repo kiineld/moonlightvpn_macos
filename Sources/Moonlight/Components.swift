@@ -489,3 +489,63 @@ struct QuotaBar: View {
     }
 }
 
+
+/// The subscription service's announcement (`announce`), as it wrote it.
+///
+/// Hidden per message: dismissing one does not hide the next, which is new
+/// news by definition.
+struct AnnounceBanner: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let text: String
+
+    @AppStorage("dismissedAnnouncement") private var dismissed = ""
+
+    var body: some View {
+        if dismissed != text {
+            HStack(alignment: .top, spacing: 12) {
+                IconView(.messageCircle, size: 17)
+                    .foregroundStyle(palette.accentInk)
+                    .padding(.top, 1)
+                Text(text)
+                    .font(.ml(13, .medium))
+                    .foregroundStyle(palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    withAnimation(Motion.paint) { dismissed = text }
+                } label: {
+                    IconView(.x, size: 14)
+                        .foregroundStyle(palette.textMuted)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .pressIcon()
+                .help(L.t(.hideAnnounce, locale))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .mlGlass(.rounded(Radii.card), tint: palette.accent.opacity(0.18),
+                     fallback: palette.accentQuiet)
+        }
+    }
+}
+
+/// A short line for the current ``TunnelIssue``, in the danger colour.
+struct IssueLine: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let issue: TunnelIssue
+    var centered = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            IconView(.circleAlert, size: 15).padding(.top, 1)
+            Text(L.issue(issue, locale))
+                .font(.ml(12.5, .medium))
+                .multilineTextAlignment(centered ? .center : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(palette.danger)
+    }
+}

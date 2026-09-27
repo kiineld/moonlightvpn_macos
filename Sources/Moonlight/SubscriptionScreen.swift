@@ -11,7 +11,13 @@ struct SubscriptionScreen: View {
 
     var body: some View {
         ScrollView {
-            columns.padding(.bottom, 8)
+            VStack(spacing: 14) {
+                if let announce = tunnel.info.announce {
+                    AnnounceBanner(text: announce).rise(0, page)
+                }
+                columns
+            }
+            .padding(.bottom, 8)
         }
         .mlScrollIndicators(hidden: true)
     }
@@ -114,18 +120,33 @@ struct SubscriptionScreen: View {
                     .font(.ml(TypeScale.meta))
                     .foregroundStyle(palette.textMuted)
                     .padding(.top, 12)
+                if let refill = tunnel.info.refillDate {
+                    Text("\(L.t(.trafficResets, locale)) \(Format.date(refill, locale: locale))")
+                        .font(.ml(TypeScale.meta))
+                        .foregroundStyle(palette.textMuted)
+                        .padding(.top, 4)
+                }
             }
         }
     }
 
     private var expiryLine: String {
-        guard let expire = tunnel.info.expire else { return L.t(.unlimited, locale) }
+        guard let expire = tunnel.info.expire else { return Format.days(nil, locale: locale) }
         return "\(L.t(.validUntil, locale)) \(Format.date(expire, locale: locale))"
     }
 
     // MARK: - Actions
 
     private var refreshRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            refreshCard
+            if let issue = tunnel.issue {
+                IssueLine(issue: issue).padding(.horizontal, 6)
+            }
+        }
+    }
+
+    private var refreshCard: some View {
         RowGroup {
             ActionRow(
                 icon: .refreshCW,
@@ -142,8 +163,8 @@ struct SubscriptionScreen: View {
 
     private var refreshMeta: String {
         if tunnel.isRefreshing { return L.t(.refreshMetaSyncing, locale) }
-        if let last = tunnel.lastRefresh, Date().timeIntervalSince(last) < 120 {
-            return L.t(.refreshMetaDone, locale)
+        if let last = tunnel.lastRefresh {
+            return "\(L.t(.lastUpdated, locale)) \(L.ago(last, locale))"
         }
         return L.t(.refreshMetaIdle, locale)
     }
@@ -157,7 +178,9 @@ struct SubscriptionScreen: View {
                 subtitle: L.t(.extendSubtitle, locale),
                 trailing: .externalLink
             ) {
-                NSWorkspace.shared.open(AppConfig.telegramBotURL)
+                // The service's own page for this subscription when it names
+                // one; the bot otherwise.
+                NSWorkspace.shared.open(tunnel.info.webPageURL ?? AppConfig.telegramBotURL)
             }
             // One subscription at a time: importing replaces it, so offering
             // to *add* one beside an active plan promised something the app
@@ -179,7 +202,9 @@ struct SubscriptionScreen: View {
                     icon: .trash2,
                     fill: palette.cat5,
                     title: L.t(.removeSubscription, locale),
-                    subtitle: tunnel.subscriptionURL ?? "",
+                    // Never the link itself: it is a credential, and anyone
+                    // who reads it off the screen has the subscription.
+                    subtitle: L.t(.removeSubscriptionSub, locale),
                     trailing: nil
                 ) {
                     Task { await tunnel.removeSubscription() }

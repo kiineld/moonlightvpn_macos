@@ -104,10 +104,28 @@ public struct SubscriptionInfo: Equatable, Codable, Sendable {
     public var deviceLimit: Int?
     public var devicesUsed: Int?
 
+    // The rest of what a Remnawave subscription response says about itself.
+    // All optional and all new, so a cache written by an older build decodes.
+
+    /// `profile-web-page-url` — the user's own subscription page, where the
+    /// plan is renewed.
+    public var webPageURL: URL?
+    /// `support-url`.
+    public var supportURL: URL?
+    /// `profile-update-interval`, in hours — how often the service suggests
+    /// refreshing.
+    public var updateIntervalHours: Int?
+    /// `announce` — a message the service wants shown to the user.
+    public var announce: String?
+    /// `subscription-refill-date` — when the traffic quota resets.
+    public var refillDate: Date?
+
     public init(
         title: String? = nil, upload: Int64? = nil, download: Int64? = nil,
         total: Int64? = nil, expire: Date? = nil,
-        deviceLimit: Int? = nil, devicesUsed: Int? = nil
+        deviceLimit: Int? = nil, devicesUsed: Int? = nil,
+        webPageURL: URL? = nil, supportURL: URL? = nil, updateIntervalHours: Int? = nil,
+        announce: String? = nil, refillDate: Date? = nil
     ) {
         self.title = title
         self.upload = upload
@@ -116,6 +134,11 @@ public struct SubscriptionInfo: Equatable, Codable, Sendable {
         self.expire = expire
         self.deviceLimit = deviceLimit
         self.devicesUsed = devicesUsed
+        self.webPageURL = webPageURL
+        self.supportURL = supportURL
+        self.updateIntervalHours = updateIntervalHours
+        self.announce = announce
+        self.refillDate = refillDate
     }
 
     public var used: Int64? {

@@ -5,6 +5,7 @@ import Foundation
 formatTests()
 timeLeftTests()
 subscriptionInfoTests()
+remnawaveTests()
 shareLinkTests()
 configTests()
 splitTunnelTests()

@@ -32,7 +32,9 @@ public final class TunnelController: ObservableObject {
     /// already arrived and made an otherwise streaming measurement look like it
     /// took as long as its worst entry.
     @Published public private(set) var pendingProbes: Set<String> = []
-    @Published public private(set) var lastError: String?
+    /// What went wrong last, as a kind the app words for the user. Cleared by
+    /// the next success of the same thing.
+    @Published public private(set) var issue: TunnelIssue?
     @Published public private(set) var lastRefresh: Date?
 
     @Published public var selectedNode: String?
@@ -84,11 +86,19 @@ public final class TunnelController: ObservableObject {
 
         selectedNode = preferences.selectedNode
         autoSelect = preferences.autoSelect
+        lastRefresh = preferences.lastRefresh
         // Cached figures outlive the subscription they describe, and a fresh
         // install that inherited them from a removed plan would show days and
         // traffic for a subscription that is not there.
         if preferences.subscriptionURL?.isEmpty == false {
-            info = preferences.cachedInfo ?? SubscriptionInfo()
+            var cached = preferences.cachedInfo ?? SubscriptionInfo()
+            // Cached by an older build that read Remnawave's "never expires"
+            // (a date in 2099) literally; fixed at the next refresh anyway.
+            if let expire = cached.expire,
+               Calendar(identifier: .gregorian).component(.year, from: expire) >= 2099 {
+                cached.expire = nil
+            }
+            info = cached
         } else {
             preferences.cachedInfo = nil
             info = SubscriptionInfo()
@@ -101,6 +111,7 @@ public final class TunnelController: ObservableObject {
         }
 
         recoverFromCrash()
+        updateRedactions()
 
         // Warm the core as soon as there is a subscription, so the first latency
         // pass is instant rather than paying for a cold start.
@@ -127,7 +138,11 @@ public final class TunnelController: ObservableObject {
         preferences.subscriptionURL?.isEmpty == false
     }
 
-    public var subscriptionURL: String? { preferences.subscriptionURL }
+    /// Whether a previously fetched subscription is on disk, so there is
+    /// something to show and run before the network answers.
+    public var hasCachedSubscription: Bool {
+        FileManager.default.fileExists(atPath: panelURL.path)
+    }
     public var tunnelMode: TunnelMode { preferences.tunnelMode }
     public var helperInstalled: Bool { HelperInstaller.isInstalled && helper.isInstalled }
 
@@ -140,14 +155,17 @@ public final class TunnelController: ObservableObject {
 
     /// Adds a subscription and fetches it. The design promises a link from the
     /// bot "adds itself", so this both stores and loads rather than only storing.
+    ///
+    /// The link is only kept once it has actually loaded. It used to be stored
+    /// first, so a mistyped link — or a server having a bad minute — replaced a
+    /// working subscription with one that loads nothing.
     @discardableResult
     public func importSubscription(_ url: String) async -> Bool {
         guard SubscriptionClient.normalize(url) != nil else {
-            lastError = "That does not look like a subscription link"
+            issue = .invalidLink
             return false
         }
-        preferences.subscriptionURL = url
-        return await refresh()
+        return await refresh(from: url.trimmingCharacters(in: .whitespacesAndNewlines), adopting: true)
     }
 
     public func removeSubscription() async {
@@ -155,6 +173,9 @@ public final class TunnelController: ObservableObject {
         preferences.subscriptionURL = nil
         preferences.cachedInfo = nil
         preferences.selectedNode = nil
+        preferences.lastRefresh = nil
+        lastRefresh = nil
+        issue = nil
         try? FileManager.default.removeItem(at: panelURL)
         nodes = []
         info = SubscriptionInfo()
@@ -164,31 +185,74 @@ public final class TunnelController: ObservableObject {
 
     @discardableResult
     public func refresh() async -> Bool {
-        guard let url = preferences.subscriptionURL, !isRefreshing else { return false }
+        guard let url = preferences.subscriptionURL else { return false }
+        return await refresh(from: url, adopting: false)
+    }
+
+    /// The intervals offered, in hours; 0 is never.
+    nonisolated public static let autoUpdateChoices = [0, 1, 6, 12, 24]
+
+    /// The offered interval nearest to `hours`. The service may suggest any
+    /// number; snapping it here means the switch always shows what will happen.
+    nonisolated public static func autoUpdateChoice(nearest hours: Int) -> Int {
+        autoUpdateChoices.min { abs($0 - hours) < abs($1 - hours) } ?? 24
+    }
+
+    /// The effective auto-update interval in hours, 0 for never: the user's
+    /// choice, or else what the service suggests, or else a day.
+    public var autoUpdateHours: Int {
+        Self.autoUpdateChoice(nearest: preferences.autoUpdateHours ?? info.updateIntervalHours ?? 24)
+    }
+
+    /// Refreshes if the interval has passed since the last successful refresh.
+    /// Called on a timer, at launch and on wake; cheap when nothing is due.
+    public func refreshIfDue() async {
+        let hours = autoUpdateHours
+        guard hours > 0, hasSubscription, !isRefreshing else { return }
+        let due = (lastRefresh ?? .distantPast).addingTimeInterval(TimeInterval(hours) * 3600)
+        guard Date() >= due else { return }
+        LogStore.shared.client("Auto-updating the subscription (every \(hours) h)")
+        await refresh()
+    }
+
+    private func refresh(from url: String, adopting: Bool) async -> Bool {
+        guard !isRefreshing else { return false }
         isRefreshing = true
         defer { isRefreshing = false }
 
         do {
             let result = try await subscriptions.fetch(url)
+            let replacing = adopting && url != preferences.subscriptionURL
+            if adopting {
+                preferences.subscriptionURL = url
+            }
+            if replacing {
+                // Another subscription's choices mean nothing for this one.
+                preferences.selectedNode = nil
+                preferences.latencies = [:]
+                selectedNode = nil
+            }
             try result.yaml.write(to: panelURL, atomically: true, encoding: .utf8)
             subscriptionSource = result.source
 
             // The `/info` endpoint carries the device count the headers do not,
-            // but the headers are what every panel implements consistently — so
-            // info first, headers layered on top, field by field.
+            // but the headers are what every subscription server implements
+            // consistently — so info first, headers layered on top.
             var merged = (await subscriptions.fetchInfo(url) ?? SubscriptionInfo())
                 .merging(result.info)
-            merged.title = merged.title ?? info.title
+            if !replacing { merged.title = merged.title ?? info.title }
             info = merged
             preferences.cachedInfo = merged
             lastRefresh = Date()
-            lastError = nil
+            preferences.lastRefresh = lastRefresh
+            issue = nil
+            updateRedactions()
 
             if state.isConnected || core.isRunning {
                 // Reload in place rather than reconnecting: a refresh should not
                 // drop a working tunnel, and the idle core has to pick up the new
                 // nodes too — otherwise the list falls back to the raw `proxies:`
-                // and the panel's own groups disappear from it.
+                // and the config's own groups disappear from it.
                 try await reloadRunningCore()
             } else {
                 // No core yet: the raw proxy list is all there is to show until
@@ -198,7 +262,9 @@ public final class TunnelController: ObservableObject {
             }
             return true
         } catch {
-            lastError = error.localizedDescription
+            issue = TunnelIssue.classify(error)
+            LogStore.shared.client("Subscription update failed: \(error.localizedDescription)",
+                                   level: .warning)
             return false
         }
     }
@@ -237,12 +303,14 @@ public final class TunnelController: ObservableObject {
             try core.validate(configPath: configURL)
             try core.start(configPath: configURL)
         } catch {
-            lastError = error.localizedDescription
+            issue = TunnelIssue.classify(error)
+            LogStore.shared.client("Core would not start: \(error.localizedDescription)", level: .error)
             return false
         }
 
         guard await api.waitUntilReady() else {
-            lastError = "The core did not start"
+            issue = .coreFailed
+            LogStore.shared.client("Core did not answer after starting", level: .error)
             core.stop()
             return false
         }
@@ -256,11 +324,11 @@ public final class TunnelController: ObservableObject {
     public func connect() async {
         guard !state.isBusy, !state.isConnected else { return }
         guard hasSubscription else {
-            lastError = "Add a subscription first"
+            issue = .noSubscription
             return
         }
         state = .connecting
-        lastError = nil
+        issue = nil
         LogStore.shared.client("Connecting via \(preferences.tunnelMode == .tun ? "TUN" : "system proxy")")
 
         do {
@@ -270,7 +338,7 @@ public final class TunnelController: ObservableObject {
                 // The core is already up for probing; connecting is only a
                 // matter of pointing the machine at it.
                 guard await ensureCoreRunning() else {
-                    throw MihomoProcess.Failure.exited(0, lastError ?? "core unavailable")
+                    throw MihomoProcess.Failure.exited(0, "core unavailable")
                 }
                 if preferences.proxySnapshot == nil {
                     preferences.proxySnapshot = SystemProxy.snapshot()
@@ -300,7 +368,8 @@ public final class TunnelController: ObservableObject {
                 // the app reports a healthy tunnel while nothing is routed.
                 try await Task.sleep(nanoseconds: 700_000_000)
                 if let reason = MihomoProcess.tunFailure(in: coreLog) {
-                    throw MihomoProcess.Failure.exited(0, reason)
+                    throw TunFailure(routesTaken: MihomoProcess.routesTaken(in: coreLog),
+                                     reason: reason)
                 }
             }
             activeMode = mode
@@ -316,7 +385,9 @@ public final class TunnelController: ObservableObject {
             state = .connected
             LogStore.shared.client("Connected — \(selectedNode ?? "auto")")
         } catch {
-            lastError = error.localizedDescription
+            // A step below may already have said something more specific —
+            // "no usable servers" beats "the core would not start".
+            if issue == nil { issue = TunnelIssue.classify(error) }
             LogStore.shared.client("Connect failed: \(error.localizedDescription)", level: .error)
             await teardown()
             state = .failed(error.localizedDescription)
@@ -349,7 +420,10 @@ public final class TunnelController: ObservableObject {
             await teardown()
             state = .disconnected
         }
-        core.stop()
+        // Not waited for: the idle core holds no system state, and it exits on
+        // the signal whether or not the app is still here to watch.
+        core.stop(waitForExit: false)
+        LogStore.shared.stopFollowingCore()
     }
 
     /// Stops routing. Teardown runs in the reverse order of ``connect()``: proxy
@@ -361,8 +435,16 @@ public final class TunnelController: ObservableObject {
         uptimeTimer?.invalidate()
         uptimeTimer = nil
 
-        SystemProxy.restore(preferences.proxySnapshot)
-        preferences.proxySnapshot = nil
+        // Only what this app changed goes back. With no snapshot this used to
+        // switch *every* proxy off on every network service — TUN never sets
+        // one, so each TUN disconnect turned off any other client's proxy (or a
+        // company one), and cost three `networksetup` runs per service.
+        if let snapshot = preferences.proxySnapshot {
+            SystemProxy.restore(snapshot)
+            preferences.proxySnapshot = nil
+        } else if activeMode == .systemProxy {
+            SystemProxy.disable(pointingAt: preferences.mixedPort)
+        }
 
         switch activeMode {
         case .tun: try? helper.stop()
@@ -412,7 +494,8 @@ public final class TunnelController: ObservableObject {
             try await api.select(node: target, in: group)
             if !autoSelect { selectedNode = target }
         } catch {
-            lastError = error.localizedDescription
+            LogStore.shared.client("Could not switch server: \(error.localizedDescription)",
+                                   level: .warning)
         }
     }
 
@@ -519,6 +602,10 @@ public final class TunnelController: ObservableObject {
             // letting an unprivileged process write a root-read path.
             try helper.start(config: yaml)
             _ = await api.waitUntilReady()
+            // A new process: the old one's log and traffic streams ended with
+            // it, which froze the speed readout at its last value.
+            LogStore.shared.followCore(api)
+            startTrafficStream()
         default:
             try yaml.write(to: configURL, atomically: true, encoding: .utf8)
             try core.validate(configPath: configURL)
@@ -610,7 +697,8 @@ public final class TunnelController: ObservableObject {
             try await api.closeAllConnections()
             LogStore.shared.client("Closed all connections")
         } catch {
-            lastError = error.localizedDescription
+            LogStore.shared.client("Could not close connections: \(error.localizedDescription)",
+                                   level: .warning)
         }
     }
 
@@ -645,7 +733,9 @@ public final class TunnelController: ObservableObject {
         do {
             try await reloadRunningCore()
         } catch {
-            lastError = error.localizedDescription
+            issue = TunnelIssue.classify(error)
+            LogStore.shared.client("Could not apply routing: \(error.localizedDescription)",
+                                   level: .error)
         }
     }
 
@@ -661,6 +751,11 @@ public final class TunnelController: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         uptimeTimer = timer
 
+        startTrafficStream()
+    }
+
+    private func startTrafficStream() {
+        trafficTask?.cancel()
         trafficTask = Task { [api] in
             // mihomo's /traffic emits per-second deltas, so the session totals
             // are accumulated here rather than read back from /connections —
@@ -680,8 +775,10 @@ public final class TunnelController: ObservableObject {
     private func handleCoreExit(_ status: Int32) {
         guard state.isConnected || state == .connecting else { return }
         let detail = core.recentLog.split(whereSeparator: \.isNewline).suffix(3).joined(separator: "\n")
-        lastError = "Core stopped unexpectedly (status \(status))\(detail.isEmpty ? "" : "\n\(detail)")"
-        Task { await teardown(); state = .failed(lastError ?? "Core stopped") }
+        issue = .coreStopped
+        LogStore.shared.client("Core stopped unexpectedly (status \(status))"
+                               + (detail.isEmpty ? "" : "\n\(detail)"), level: .error)
+        Task { await teardown(); state = .failed("Core stopped") }
     }
 
     /// A force-quit while connected leaves the machine's proxy pointing at a
@@ -715,6 +812,25 @@ public final class TunnelController: ObservableObject {
     }
 
     // MARK: -
+
+    /// Tells the log what never to show: the subscription link, its host and
+    /// its token, and every server address the subscription names. Core errors
+    /// quote server addresses (`dial tcp …`), and the log is on screen.
+    private func updateRedactions() {
+        var secrets: [String] = []
+        if let link = preferences.subscriptionURL, let url = SubscriptionClient.normalize(link) {
+            secrets.append(link)
+            secrets.append(url.absoluteString)
+            if let host = url.host { secrets.append(host) }
+            secrets += url.pathComponents.filter { $0.count >= 8 }
+        }
+        if let yaml = try? loadPanelYAML(),
+           let root = try? Yams.load(yaml: yaml) as? [String: Any],
+           let proxies = root["proxies"] as? [[String: Any]] {
+            secrets += proxies.compactMap { $0["server"] as? String }
+        }
+        LogStore.shared.setRedactions(secrets)
+    }
 
     private func overrides(mode: TunnelMode) -> MihomoConfig.Overrides {
         MihomoConfig.Overrides(

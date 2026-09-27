@@ -94,6 +94,22 @@ public enum SystemProxy {
         }
     }
 
+    /// Turns off, on each service, only the proxies pointing at `port` on
+    /// loopback — this app's own — and leaves anything else configured alone.
+    public static func disable(pointingAt port: Int) {
+        let mine = String(port)
+        for service in activeServices() {
+            for (get, off) in [("-getwebproxy", "-setwebproxystate"),
+                               ("-getsecurewebproxy", "-setsecurewebproxystate"),
+                               ("-getsocksfirewallproxy", "-setsocksfirewallproxystate")] {
+                let proxy = readProxy(get, service)
+                if proxy.enabled, proxy.server == "127.0.0.1", proxy.port == mine {
+                    _ = run([networksetup, off, service, "off"])
+                }
+            }
+        }
+    }
+
     public static func disableAll() {
         for service in activeServices() {
             _ = run([networksetup, "-setwebproxystate", service, "off"])

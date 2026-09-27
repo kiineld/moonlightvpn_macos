@@ -20,6 +20,11 @@ final class AppSettings: ObservableObject {
     @Published var sidebarCollapsed: Bool {
         didSet { preferences.sidebarCollapsed = sidebarCollapsed }
     }
+    /// Hours between automatic subscription updates, 0 for never; nil until
+    /// chosen, meaning the service's own suggestion.
+    @Published var autoUpdateHours: Int? {
+        didSet { preferences.autoUpdateHours = autoUpdateHours }
+    }
 
     /// Whether the app starts at login — as the *system* has it, not as a
     /// preference remembers it.
@@ -60,6 +65,7 @@ final class AppSettings: ObservableObject {
         autoConnect = preferences.autoConnect
         menuBarIcon = preferences.menuBarIcon
         sidebarCollapsed = preferences.sidebarCollapsed
+        autoUpdateHours = preferences.autoUpdateHours
         launchAtLogin = Self.systemLaunchAtLogin ?? preferences.launchAtLogin
         preferences.launchAtLogin = launchAtLogin
     }

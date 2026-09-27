@@ -121,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var settings: AppSettings?
     private var statusItem: StatusItemController?
     private var alerts: SubscriptionAlerts?
+    private var scheduler: SubscriptionScheduler?
     private var quitting = false
 
     /// Built once both objects exist, which is when the root view appears.
@@ -129,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         guard statusItem == nil, let tunnel, let settings else { return }
         statusItem = StatusItemController(tunnel: tunnel, settings: settings)
         alerts = SubscriptionAlerts(tunnel: tunnel, settings: settings)
+        scheduler = SubscriptionScheduler(tunnel: tunnel)
     }
 
     @MainActor

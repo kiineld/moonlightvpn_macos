@@ -45,7 +45,6 @@ public enum L {
         case extendSubscription, extendSubtitle
         case addSubscriptionRow, addSubscriptionSubtitle
         case validUntil, unlimited
-        case sourceMihomo, sourceClash, sourceShareLinks
 
         // Import
         case importIntro, importPlaceholder, importAdd
@@ -83,6 +82,14 @@ public enum L {
         // Updates
         case updateChecking, updateUpToDate, updateAvailable, updateDownloading
         case updateInstalling, updateInstall, updateFailed
+        // Subscription service extras
+        case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
+        case trafficResets, removeSubscriptionSub, hideAnnounce
+        // Issues
+        case issueInvalidLink, issueNoSubscription, issueOffline, issueServerUnavailable
+        case issueErrorCode, issueTryLater, issueLinkRejected, issueEmpty, issueNoUsable
+        case issueDeviceLimit, issueDeviceNotSupported, issueCoreFailed, issueCoreStopped
+        case issueRoutesTaken, issueTunFailed, issueHelperMissing, issueHelperOutdated
         // Notifications
         case notifyExpiringTitle, notifyExpiringBody, notifyExpiredTitle, notifyExpiredBody
         case notifyTrafficLowTitle, notifyTrafficLowBody, notifyTrafficOutTitle, notifyTrafficOutBody
@@ -160,9 +167,6 @@ public enum L {
             case .addSubscriptionSubtitle: return "Вставить ссылку из бота"
             case .validUntil: return "действует до"
             case .unlimited: return "без лимита"
-            case .sourceMihomo: return "Конфигурация панели (mihomo)"
-            case .sourceClash: return "Конфигурация панели (clash)"
-            case .sourceShareLinks: return "Список ссылок — группы и правила панели недоступны"
 
             case .importIntro:
                 return "Вставьте ссылку подписки из Telegram-бота или личного кабинета. Ключи останутся на этом компьютере."
@@ -263,6 +267,32 @@ public enum L {
             case .updateInstalling: return "Установка и перезапуск…"
             case .updateInstall: return "Обновить"
             case .updateFailed: return "Не удалось обновить"
+            case .autoUpdate: return "Автообновление подписки"
+            case .autoUpdateSub: return "Как часто проверять серверы, дни и трафик"
+            case .autoUpdateOff: return "Выкл"
+            case .hoursShort: return "ч"
+            case .lastUpdated: return "Обновлено"
+            case .neverUpdated: return "Ещё не обновлялась"
+            case .trafficResets: return "Трафик обновится"
+            case .removeSubscriptionSub: return "Ссылка будет удалена с этого Mac"
+            case .hideAnnounce: return "Скрыть"
+            case .issueInvalidLink: return "Это не похоже на ссылку подписки"
+            case .issueNoSubscription: return "Сначала добавьте подписку"
+            case .issueOffline: return "Нет подключения к интернету"
+            case .issueServerUnavailable: return "Сервер подписки временно недоступен"
+            case .issueErrorCode: return "ошибка"
+            case .issueTryLater: return "Попробуйте позже."
+            case .issueLinkRejected: return "Ссылка больше не действует. Возьмите новую в боте."
+            case .issueEmpty: return "В подписке нет серверов"
+            case .issueNoUsable: return "В подписке нет серверов, которые поддерживает приложение"
+            case .issueDeviceLimit: return "Достигнут лимит устройств. Отключите другое устройство в личном кабинете."
+            case .issueDeviceNotSupported: return "Подписка не принимает это устройство"
+            case .issueCoreFailed: return "Не удалось запустить VPN. Подробности — в логах."
+            case .issueCoreStopped: return "VPN неожиданно остановился. Подключитесь снова."
+            case .issueRoutesTaken: return "Маршруты заняты другим VPN. Закройте его или включите режим системного прокси."
+            case .issueTunFailed: return "Не удалось создать TUN-интерфейс. Подробности — в логах."
+            case .issueHelperMissing: return "Для TUN нужен системный помощник — установите его в настройках"
+            case .issueHelperOutdated: return "Системный помощник устарел — переустановите его в настройках"
             case .notifyExpiringTitle: return "Подписка заканчивается"
             case .notifyExpiringBody: return "Осталось {days}. Продлите её в боте, чтобы не остаться без VPN."
             case .notifyExpiredTitle: return "Подписка закончилась"
@@ -339,7 +369,7 @@ public enum L {
             case .copied: return "Copied"
             case .refreshSubscription: return "Refresh subscription"
             case .refreshMetaIdle: return "Check servers, days and traffic"
-            case .refreshMetaSyncing: return "Syncing with the panel…"
+            case .refreshMetaSyncing: return "Syncing with the server…"
             case .refreshMetaDone: return "Updated just now"
             case .extendSubscription: return "Extend subscription"
             case .extendSubtitle: return "Opens your account"
@@ -347,9 +377,6 @@ public enum L {
             case .addSubscriptionSubtitle: return "Paste a link from the bot"
             case .validUntil: return "valid until"
             case .unlimited: return "unlimited"
-            case .sourceMihomo: return "Panel configuration (mihomo)"
-            case .sourceClash: return "Panel configuration (clash)"
-            case .sourceShareLinks: return "Share-link list — the panel's groups and rules are not available"
 
             case .importIntro:
                 return "Paste the subscription link from the Telegram bot or your account. The keys stay on this computer."
@@ -450,6 +477,32 @@ public enum L {
             case .updateInstalling: return "Installing and restarting…"
             case .updateInstall: return "Update"
             case .updateFailed: return "Update failed"
+            case .autoUpdate: return "Update the subscription automatically"
+            case .autoUpdateSub: return "How often to check servers, days and traffic"
+            case .autoUpdateOff: return "Off"
+            case .hoursShort: return "h"
+            case .lastUpdated: return "Updated"
+            case .neverUpdated: return "Not updated yet"
+            case .trafficResets: return "Traffic resets"
+            case .removeSubscriptionSub: return "Removes the link from this Mac"
+            case .hideAnnounce: return "Hide"
+            case .issueInvalidLink: return "This doesn't look like a subscription link"
+            case .issueNoSubscription: return "Add a subscription first"
+            case .issueOffline: return "No internet connection"
+            case .issueServerUnavailable: return "The subscription server is temporarily unavailable"
+            case .issueErrorCode: return "error"
+            case .issueTryLater: return "Try again later."
+            case .issueLinkRejected: return "This link no longer works. Get a new one from the bot."
+            case .issueEmpty: return "The subscription has no servers"
+            case .issueNoUsable: return "None of the subscription's servers work with this app"
+            case .issueDeviceLimit: return "Device limit reached. Remove another device in your account."
+            case .issueDeviceNotSupported: return "The subscription doesn't accept this device"
+            case .issueCoreFailed: return "Couldn't start the VPN. See the logs for details."
+            case .issueCoreStopped: return "The VPN stopped unexpectedly. Connect again."
+            case .issueRoutesTaken: return "Another VPN owns the system routes. Quit it or use system proxy mode."
+            case .issueTunFailed: return "Couldn't create the TUN interface. See the logs for details."
+            case .issueHelperMissing: return "TUN needs the system helper — install it in Settings"
+            case .issueHelperOutdated: return "The system helper is out of date — reinstall it in Settings"
             case .notifyExpiringTitle: return "Your subscription is ending"
             case .notifyExpiringBody: return "{days} left. Renew it in the bot to stay connected."
             case .notifyExpiredTitle: return "Your subscription has ended"
@@ -471,6 +524,45 @@ extension EnvironmentValues {
     var appLocale: AppLocale {
         get { self[LocaleKey.self] }
         set { self[LocaleKey.self] = newValue }
+    }
+}
+
+extension L {
+    /// "5 минут назад" / "5 minutes ago".
+    static func ago(_ date: Date, _ locale: AppLocale) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: locale == .ru ? "ru_RU" : "en_US")
+        formatter.unitsStyle = .full
+        // Under a minute reads as "now" rather than "in 0 seconds".
+        return Date().timeIntervalSince(date) < 60
+            ? (locale == .ru ? "только что" : "just now")
+            : formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// A ``TunnelIssue`` as the user reads it. Never names the service behind
+    /// the subscription, never repeats the link or a server address — the one
+    /// thing quoted verbatim is the service's own device-limit message, which
+    /// it writes for exactly this screen.
+    static func issue(_ issue: TunnelIssue, _ locale: AppLocale) -> String {
+        switch issue {
+        case .invalidLink: return t(.issueInvalidLink, locale)
+        case .noSubscription: return t(.issueNoSubscription, locale)
+        case .offline: return t(.issueOffline, locale)
+        case .serverUnavailable(let code):
+            let status = code.map { " (\(t(.issueErrorCode, locale)) \($0))" } ?? ""
+            return "\(t(.issueServerUnavailable, locale))\(status). \(t(.issueTryLater, locale))"
+        case .linkRejected: return t(.issueLinkRejected, locale)
+        case .emptySubscription: return t(.issueEmpty, locale)
+        case .noUsableServers: return t(.issueNoUsable, locale)
+        case .deviceLimit(let message): return message ?? t(.issueDeviceLimit, locale)
+        case .deviceNotSupported: return t(.issueDeviceNotSupported, locale)
+        case .coreFailed: return t(.issueCoreFailed, locale)
+        case .coreStopped: return t(.issueCoreStopped, locale)
+        case .routesTaken: return t(.issueRoutesTaken, locale)
+        case .tunFailed: return t(.issueTunFailed, locale)
+        case .helperMissing: return t(.issueHelperMissing, locale)
+        case .helperOutdated: return t(.issueHelperOutdated, locale)
+        }
     }
 }
 

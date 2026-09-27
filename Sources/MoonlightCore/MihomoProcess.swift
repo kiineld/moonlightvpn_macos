@@ -58,6 +58,13 @@ public final class MihomoProcess: @unchecked Sendable {
     /// crash: the core keeps running and keeps answering its API with the
     /// interface never established, so every other signal says "connected"
     /// while no traffic moves.
+    /// Whether the TUN failure in `log` is another client holding the routes.
+    public static func routesTaken(in log: String) -> Bool {
+        guard let line = log.split(whereSeparator: \.isNewline)
+            .last(where: { $0.contains("Start TUN listening error") }) else { return false }
+        return line.contains("file exists") || line.contains("add route")
+    }
+
     public static func tunFailure(in log: String) -> String? {
         guard let line = log
             .split(whereSeparator: \.isNewline)
@@ -208,7 +215,13 @@ public final class MihomoProcess: @unchecked Sendable {
         lock.unlock()
     }
 
-    public func stop() {
+    /// Stops the core.
+    ///
+    /// - Parameter waitForExit: Block until it has gone, escalating to SIGKILL
+    ///   after five seconds. Only a core with system state to tear down needs
+    ///   that; an idle core owns nothing but its ports, and waiting for it at
+    ///   quit only makes quitting slow — it exits on the signal regardless.
+    public func stop(waitForExit: Bool = true) {
         lock.lock()
         let running = process
         stopping = true
@@ -219,6 +232,7 @@ public final class MihomoProcess: @unchecked Sendable {
         // SIGTERM first: mihomo tears down its interface and restores routes on
         // it. A SIGKILL here would leave a `utun` device and its routes behind.
         running.terminate()
+        guard waitForExit else { return }
 
         let deadline = Date().addingTimeInterval(5)
         while running.isRunning, Date() < deadline {

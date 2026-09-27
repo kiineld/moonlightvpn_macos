@@ -165,7 +165,12 @@ Quitting brings everything down — routing, the proxy settings, and the idle co
 too, which `disconnect()` deliberately keeps warm while the app is open. The
 teardown runs under `.terminateLater`; it used to be awaited on a semaphore in
 `applicationWillTerminate`, which blocked the very thread the disconnect needed,
-so every quit stalled eight seconds and then left the tunnel up.
+so every quit stalled eight seconds and then left the tunnel up. Quitting is
+also quick now: the idle core is signalled and not waited for (it owns no system
+state), and only the proxy settings this app changed are put back. Restoring
+with no snapshot used to switch **every** proxy off on every network service —
+TUN never sets one, so each TUN disconnect turned off any other client's proxy,
+at three `networksetup` runs per service.
 
 The app starts at login when **Запускать при входе в систему** is on, and only
 then. The switch is read from the system (`SMAppService`, or the LaunchAgent on
@@ -278,17 +283,71 @@ The HWID is a **random UUID, not a hardware identifier**. It gives the panel a
 stable per-install handle for its device limit and carries no hardware identity
 off the machine.
 
-`subscription-userinfo` and `profile-title` response headers take precedence
-over `<url>/info`, field by field, because they are what every panel implements
-consistently. A missing field reads as *unknown* rather than zero — a plan whose
-panel omits `total` is unlimited, and showing "0 GB" for it would be a lie the
-user acts on.
+### Response headers
+
+Every header Remnawave sends (`ISubscriptionHeaders` in its backend) is read,
+and each takes precedence over `<url>/info`, field by field. A missing field
+reads as *unknown* rather than zero — a plan whose response omits `total` is
+unlimited, and showing "0 GB" for it would be a lie the user acts on.
+
+| Header | Used for |
+|---|---|
+| `subscription-userinfo` | traffic used and allowed, expiry; `0` means unlimited |
+| `profile-title` | the plan name |
+| `announce` | a banner on the connect and subscription screens, hidden per message |
+| `profile-web-page-url` | where **Продлить подписку** goes, before the bot |
+| `support-url` | where **Поддержка** goes, before the built-in link |
+| `profile-update-interval` | the default auto-update interval, in hours |
+| `subscription-refill-date` | "Трафик обновится …" under the traffic bar |
+| `x-hwid-max-devices-reached`, `x-hwid-not-supported` | the device-limit answer |
+| `content-disposition`, `routing` | not read — an account name, and another client's routing profile |
+
+Text values may come as `base64:<payload>` — how Remnawave renders anything its
+operator wrapped in `rwEncodeBase64:` — and are decoded, URL-safe alphabet and
+missing padding included. Links are accepted only as `https`/`http` (and `tg`,
+`mailto` for support), since the app opens them on a click.
+
+At its device limit Remnawave answers **HTTP 200 with an empty body** and says
+so only in a header. Read without it, that was "the subscription is empty"; it
+is now the device limit, with the service's own `announce` text when it sent
+one, and the other endpoints are not tried after it. Remnawave also spells
+"never expires" as a date in 2099 in `/info` (its headers send `0`); that is
+read as no expiry, not as 26 892 days.
+
+### Auto-update
+
+**Настройки → Автообновление подписки**: off, or every 1, 6, 12 or 24 hours.
+Until one is picked the service's `profile-update-interval` applies, snapped to
+the nearest of those, and a day when it sends none. The schedule survives
+relaunches — the time of the last successful refresh is stored — and is checked
+every five minutes and on wake, so a Mac asleep through the due time refreshes
+when it opens. Launch refreshes only when due; "off" means only the refresh
+button and ⌘R.
+
+A new link replaces the current one **only once it has loaded**. It used to be
+stored first, so a mistyped link — or the server having a bad minute — left a
+working subscription replaced by one that loaded nothing.
+
+### Nothing about the service reaches the screen
+
+No screen names the service behind the subscription, or shows the link, a
+server's address or a credential:
+
+- Errors are a `TunnelIssue` the app words itself, in Russian or English —
+  "Сервер подписки временно недоступен (ошибка 502)", not "Panel returned HTTP
+  502". The technical description goes to the log.
+- The log masks, in every line and in lines already kept, the subscription link,
+  its host and token, and every server the subscription names — core errors
+  quote server addresses (`dial tcp …`).
+- The subscription screen no longer prints the link under "Удалить подписку";
+  the link is a credential.
+- The account username from `/info` is not used as the plan name.
 
 ### The subscription client ignores the system proxy
 
 This is the macOS counterpart of the Android client excluding itself from its
 own tunnel. While connected in system-proxy mode the app has pointed the whole
-machine at its own core, and a shared `URLSession` would send the panel request
+machine at its own core, and a shared `URLSession` would send the subscription request
 back through the tunnel it is managing. It also means a stale proxy left behind
 by any other client cannot swallow this app's requests — which is a silent hang
 with no timeout, because the connection is established and simply never
