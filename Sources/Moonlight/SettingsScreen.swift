@@ -342,25 +342,31 @@ struct SettingsScreen: View {
                     updateButton
                 }
 
-                if let progress = updateProgress {
-                    progress.padding(.top, 14)
-                } else if case .available(let version, _) = updater.state {
-                    Text("\(L.t(.updateAvailable, locale)) \(version)")
-                        .font(.ml(12))
-                        .foregroundStyle(palette.accentInk)
-                        .padding(.top, 10)
-                } else if case .failed(let reason) = updater.state {
-                    Text("\(L.t(.updateFailed, locale)): \(reason)")
-                        .font(.ml(12))
-                        .foregroundStyle(palette.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 10)
-                } else if updater.state == .upToDate {
-                    Text(L.t(.updateUpToDate, locale))
-                        .font(.ml(12))
-                        .foregroundStyle(palette.textMuted)
-                        .padding(.top, 10)
+                // The result eases in under the header on the one curve rather
+                // than growing the card in a single frame.
+                Group {
+                    if let progress = updateProgress {
+                        progress.padding(.top, 14)
+                    } else if case .available(let version, _) = updater.state {
+                        Text("\(L.t(.updateAvailable, locale)) \(version)")
+                            .font(.ml(12))
+                            .foregroundStyle(palette.accentInk)
+                            .padding(.top, 10)
+                    } else if case .failed(let reason) = updater.state {
+                        Text("\(L.t(.updateFailed, locale)): \(reason)")
+                            .font(.ml(12))
+                            .foregroundStyle(palette.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 10)
+                    } else if updater.state == .upToDate {
+                        Text(L.t(.updateUpToDate, locale))
+                            .font(.ml(12))
+                            .foregroundStyle(palette.textMuted)
+                            .padding(.top, 10)
+                    }
                 }
+                .transition(.opacity)
+                .animation(Motion.standard, value: statusKind)
 
                 palette.hairlineSoft.frame(height: 1).padding(.vertical, 16)
 
@@ -385,49 +391,45 @@ struct SettingsScreen: View {
     /// exactly what this does — fetch the release, swap the bundle, relaunch.
     @ViewBuilder
     private var updateButton: some View {
-        switch updater.state {
-        case .checking, .downloading, .verifying, .installing:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text(progressText)
-                    .font(.ml(12.5, .heavy).monospacedDigit())
-                    .foregroundStyle(palette.textMuted)
-                    .lineLimit(1)
-                    .fixedSize()
+        let available: Bool = { if case .available = updater.state { return true }; return false }()
+        let busy = updater.state.isUnderWay || updater.state == .checking
+        return Button {
+            guard !busy else { return }
+            Task { available ? await updater.install() : await updater.check() }
+        } label: {
+            // One control through every state, the same size throughout: the
+            // widest label is laid out invisibly and the current one sits on
+            // it. Swapping the glass button for a bare spinner and back made
+            // the card jump twice on every check, and the version line beside
+            // it re-truncated each time.
+            ZStack {
+                Text(L.t(.checkUpdates, locale)).hidden()
+                if busy {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progressText).monospacedDigit()
+                    }
+                    .transition(.opacity)
+                } else {
+                    Text(L.t(available ? .updateInstall : .checkUpdates, locale))
+                        .transition(.opacity)
+                }
             }
+            .font(.ml(12.5, .heavy))
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundStyle(available ? palette.textOnAccent : busy ? palette.textMuted : palette.text)
             .padding(.horizontal, 15)
             .frame(height: 36)
-
-        case .available:
-            Button {
-                Task { await updater.install() }
-            } label: {
-                Text(L.t(.updateInstall, locale))
-                    .font(.ml(12.5, .heavy))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundStyle(palette.textOnAccent)
-                    .padding(.horizontal, 15)
-                    .frame(height: 36)
-                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
-            }
-            .pressButton()
-
-        default:
-            Button {
-                Task { await updater.check() }
-            } label: {
-                Text(L.t(.checkUpdates, locale))
-                    .font(.ml(12.5, .heavy))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundStyle(palette.text)
-                    .padding(.horizontal, 15)
-                    .frame(height: 36)
-                    .mlGlass(.capsule, fallback: palette.surface2)
-            }
-            .pressButton()
+            .mlGlass(.capsule, tint: available ? palette.accent : nil,
+                     fallback: available ? palette.accent : palette.surface2)
         }
+        .pressButton()
+        // Not disabled while busy — it ignores the click instead. Disabling the
+        // focused button moved focus on to the next control, and the scroll
+        // view jumped to show it: the page leapt the moment a check began.
+        .animation(Motion.standard, value: busy)
+        .animation(Motion.paint, value: available)
     }
 
     /// Beside the spinner: how much has arrived while downloading, the stage
@@ -437,6 +439,18 @@ struct SettingsScreen: View {
             return Format.transfer(received, of: total, locale: locale)
         }
         return L.t(progressLabel, locale)
+    }
+
+    /// Which status line shows — changes only when the line itself does, not
+    /// on every download tick, so the curve runs once per change.
+    private var statusKind: Int {
+        switch updater.state {
+        case .downloading, .verifying, .installing: return 1
+        case .available: return 2
+        case .failed: return 3
+        case .upToDate: return 4
+        default: return 0
+        }
     }
 
     private var progressLabel: L.Key {
