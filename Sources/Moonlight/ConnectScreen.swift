@@ -25,7 +25,7 @@ struct ConnectScreen: View {
     /// page's offset, the list's height and fade, the chevron. A spring
     /// damped to just short of settling on its own: it eases in and lands
     /// without the overshoot that makes a bounce read as a toy.
-    static let drawer = Animation.spring(response: 0.55, dampingFraction: 0.92)
+    static let drawer = Motion.standard
     private static let pickerHeight: CGFloat = 60
     private static let drawerGap: CGFloat = 10
 
@@ -48,7 +48,6 @@ struct ConnectScreen: View {
                     Task { await tunnel.toggle() }
                 }
                 .help("\(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale)) · ⌘⇧C")
-                .background(bloom)
                 .rise(0, page)
                 belowButtonContent
                     .background(measure(BelowButtonKey.self))
@@ -69,8 +68,22 @@ struct ConnectScreen: View {
                 page: height, centre: centre, column: aboveButton + button + belowButton))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .onPreferenceChange(AboveButtonKey.self) { aboveButton = $0 }
-        .onPreferenceChange(BelowButtonKey.self) { belowButton = $0 }
+        .onPreferenceChange(AboveButtonKey.self) { settle(&aboveButton, $0) }
+        .onPreferenceChange(BelowButtonKey.self) { settle(&belowButton, $0) }
+    }
+
+    /// Takes a new measurement. The first is applied as is — there is nothing
+    /// on screen to move yet — and every later one on the one curve: a line
+    /// appearing under the button (an error, the service's message) used to
+    /// re-centre the page in a single frame, which read as the page jumping
+    /// every time a connect started or a refresh finished.
+    private func settle(_ value: inout CGFloat, _ measured: CGFloat) {
+        guard abs(value - measured) > 0.5 else { return }
+        if value == 0 {
+            value = measured
+        } else {
+            withAnimation(Motion.standard) { value = measured }
+        }
     }
 
     /// How far down to start the column so its middle lands on `centre`,
@@ -91,12 +104,15 @@ struct ConnectScreen: View {
     private var timer: some View {
         VStack(spacing: 0) {
             Text(L.t(.connectionTime, locale))
-                .font(.ml(12.5, .semibold))
-                .foregroundStyle(palette.text2)
+                .font(.ml(12, .medium))
+                .foregroundStyle(palette.textMuted)
             Text(Format.duration(tunnel.uptime))
-                .font(.ml(20, .semibold).monospacedDigit())
+                // A hero number, so the display face — tabular, so the time
+                // ticks without the digits shifting under it.
+                .font(.mlDisplay(24, .semibold).monospacedDigit())
                 .foregroundStyle(tunnel.state.isConnected ? palette.text : palette.textMuted)
-                .padding(.top, 3)
+                .padding(.top, 2)
+                .animation(Motion.paint, value: tunnel.state.isConnected)
         }
     }
 
@@ -120,31 +136,22 @@ struct ConnectScreen: View {
                 IssueLine(issue: issue, centered: true)
                     .frame(maxWidth: 440)
                     .padding(.top, 14)
+                    .transition(.opacity)
             }
             if let announce = tunnel.info.announce {
                 AnnounceBanner(text: announce)
                     .frame(maxWidth: 560)
                     .padding(.top, 28)
                     .rise(0.05, page)
+                    .transition(.opacity)
             }
             serverList
                 .frame(maxWidth: 560)
                 .padding(.top, 28)
                 .rise(0.07, page)
         }
-    }
-
-    /// A faint accent bloom while the tunnel is up. It is also what gives the
-    /// glass above it something to bend.
-    private var bloom: some View {
-        RadialGradient(
-            colors: [palette.accent.opacity(0.16), palette.accent.opacity(0)],
-            center: .center, startRadius: 0, endRadius: 180
-        )
-        .frame(width: 460, height: 360)
-        .opacity(tunnel.state.isConnected ? 1 : 0)
-        .animation(Motion.enter, value: tunnel.state.isConnected)
-        .allowsHitTesting(false)
+        .animation(Motion.standard, value: tunnel.issue)
+        .animation(Motion.standard, value: tunnel.info.announce)
     }
 
     private var statusLabel: String {
@@ -206,7 +213,7 @@ struct ConnectScreen: View {
             HStack(spacing: 12) {
                 pickedGlyph
                     .frame(width: 40, height: 40)
-                    .background(Circle().fill(palette.text.opacity(0.06)))
+                    .mlGlass(.circle, fallback: palette.surface2)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(picked.title)
                         .font(.ml(14.5, .heavy))
@@ -394,9 +401,13 @@ struct ConnectScreen: View {
 
 // MARK: - Power button
 
-/// A glass squircle holding one round control. Off, the circle is neutral and
-/// carries the power glyph; on, it fills with the accent and the glyph becomes
-/// a stop square — the change of state is the change of colour.
+/// The connect control is the moon from the logo.
+///
+/// Disconnected it is the logo's crescent, dim, with its two stars; connected
+/// the shadow slides off and it is a full moon, lit, and the stars fade as the
+/// sky brightens. Changing state is the moon changing phase — the one moment in
+/// the interface allowed to be expressive, and the brand doing the explaining.
+/// While the tunnel is changing state a thin orbit turns round it.
 private struct PowerButton: View {
     @Environment(\.palette) private var palette
     let state: ConnectionState
@@ -407,69 +418,96 @@ private struct PowerButton: View {
 
     @State private var hovering = false
 
-    /// Everything is drawn at this multiple of the compact size, so the knob,
-    /// the glyph and the corner grow together rather than the tile alone.
     private static let largeScale: CGFloat = 2
-    private static let compactTile: CGFloat = 92
+    private static let compactSide: CGFloat = 92
 
-    static func side(large: Bool) -> CGFloat { compactTile * (large ? largeScale : 1) }
+    static func side(large: Bool) -> CGFloat { compactSide * (large ? largeScale : 1) }
 
-    private var scale: CGFloat { large ? Self.largeScale : 1 }
-    private var tile: CGFloat { Self.compactTile * scale }
-    private var knob: CGFloat { 58 * scale }
-    private var corner: CGFloat { 28 * scale }
+    private var side: CGFloat { Self.side(large: large) }
+    private var moon: CGFloat { side * 0.5 }
+    private var full: Bool { state.isConnected }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(state.isConnected ? palette.accent : palette.surface3)
-                    .frame(width: knob, height: knob)
-                    .shadow(color: state.isConnected ? palette.accent.opacity(0.45) : .clear,
-                            radius: 14 * scale)
+                    .strokeBorder(palette.text.opacity(full || hovering ? 0.45 : 0), lineWidth: 1)
                 if state.isBusy {
-                    SpinnerArc()
-                        .frame(width: knob + 12 * scale, height: knob + 12 * scale)
+                    Orbit()
+                        .padding(side * 0.06)
                 }
-                glyph
+                MoonPhase(full: full, lit: full ? palette.text : palette.text2)
+                    .frame(width: moon, height: moon)
+                    .shadow(color: palette.text.opacity(full ? 0.35 : 0), radius: moon * 0.35)
+                stars
             }
-            .frame(width: tile, height: tile)
-            .mlGlass(.rounded(corner), fallback: palette.surface)
-            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .frame(width: side, height: side)
+            .mlGlass(.circle, fallback: palette.surface)
+            .contentShape(Circle())
         }
-        .buttonStyle(PressScale(scale: 0.95))
+        .buttonStyle(PressScale(scale: Motion.pressButton))
         .disabled(!enabled || state.isBusy)
         .opacity(enabled ? 1 : 0.5)
         .onHover { hovering = $0 }
-        .animation(Motion.enter, value: state)
+        .animation(Motion.standard, value: full)
         .animation(Motion.paint, value: hovering)
     }
 
-    @ViewBuilder
-    private var glyph: some View {
-        if state.isConnected {
-            RoundedRectangle(cornerRadius: 5 * scale, style: .continuous)
-                .fill(palette.textOnAccent)
-                .frame(width: 20 * scale, height: 20 * scale)
-        } else {
-            IconView(.power, size: 24 * scale, strokeWidth: 2.4)
-                .foregroundStyle(hovering && enabled ? palette.accentInk : palette.text)
+    /// The logo's two stars, up and to the right of the moon. They belong to
+    /// the night, so they go as the moon fills.
+    private var stars: some View {
+        ZStack {
+            Circle().frame(width: moon * 0.1, height: moon * 0.1)
+                .offset(x: moon * 0.5, y: -moon * 0.5)
+            Circle().frame(width: moon * 0.065, height: moon * 0.065)
+                .offset(x: moon * 0.24, y: -moon * 0.72)
+        }
+        .foregroundStyle(palette.text2)
+        .opacity(full ? 0 : 1)
+    }
+}
+
+/// A lit disc with a second disc cut out of it. The cut's offset is the phase:
+/// close in, a crescent lit to the lower left as the logo draws it; slid off,
+/// a full moon. The cut is transparent rather than painted, so the glass under
+/// the moon shows through the dark part as it does round it.
+private struct MoonPhase: View {
+    let full: Bool
+    let lit: Color
+
+    var body: some View {
+        GeometryReader { geometry in
+            let d = geometry.size.width
+            ZStack {
+                Circle().fill(lit)
+                Circle()
+                    .offset(x: full ? d * 1.15 : d * 0.3, y: full ? -d * 0.9 : -d * 0.24)
+                    .blendMode(.destinationOut)
+            }
+            .compositingGroup()
         }
     }
 }
 
-/// The arc that turns round the knob while the tunnel is changing state.
-private struct SpinnerArc: View {
+/// A thin arc circling the moon while the tunnel connects or disconnects.
+///
+/// Driven by the clock rather than by a repeating animation. A
+/// `repeatForever` animation claims every change made in its transaction and
+/// every change to the view's layout while it runs — so when the page
+/// re-centred on connect, or the button grew, the spinner looped those too and
+/// the whole control wobbled. A timeline only turns the arc.
+private struct Orbit: View {
     @Environment(\.palette) private var palette
-    @State private var turning = false
 
     var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.28)
-            .stroke(palette.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
-            .onAppear { turning = true }
+        TimelineView(.animation) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+            Circle()
+                .trim(from: 0, to: 0.22)
+                .stroke(palette.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .rotationEffect(.degrees(turn * 360))
+        }
+        .transition(.opacity)
     }
 }
 
@@ -532,7 +570,10 @@ private struct NodeRow: View {
                         .font(.ml(14, .bold))
                         .foregroundStyle(palette.text)
                         .lineLimit(1)
-                    Text(node.subtitle(locale))
+                    // What the service says the row is for, when it says —
+                    // "Poland LTE 1" means little until "Доступность во время
+                    // БС" is under it; the flag already gives the country.
+                    Text(node.serverDescription ?? node.subtitle(locale))
                         .font(.ml(12))
                         .foregroundStyle(palette.textMuted)
                         .lineLimit(1)

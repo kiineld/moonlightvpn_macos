@@ -62,6 +62,18 @@ func configTests() {
                     "each described server, by name; blank ones are left out")
         Check.equal(MihomoConfig.serverDescriptions(panelYAML: panelYAML), [:],
                     "a panel that sends none gives none")
+
+        // A group can be a row too — a balancer the service built and named.
+        let grouped = """
+        proxies:
+          - {name: "🇳🇱 Netherlands LTE 1", type: ss, server: 1.2.3.4, port: 443, cipher: aes-256-gcm, password: pw}
+        proxy-groups:
+          - {name: "🇵🇱 Poland LTE 1", type: load-balance, proxies: ["🇳🇱 Netherlands LTE 1"], description: "Доступность во время БС 🌟"}
+          - {name: "Панель", type: select, proxies: ["🇵🇱 Poland LTE 1"]}
+        """
+        Check.equal(MihomoConfig.serverDescriptions(panelYAML: grouped),
+                    ["🇵🇱 Poland LTE 1": "Доступность во время БС 🌟"],
+                    "a group's description is read as well")
     }
 
     Check.suite("MihomoConfig · client-owned settings") {

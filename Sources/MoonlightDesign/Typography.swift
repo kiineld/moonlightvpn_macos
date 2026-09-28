@@ -69,6 +69,11 @@ public extension Font {
             : .system(size: size, weight: weight, design: .rounded)
     }
 
+    /// "moonlight" beside the logo — Unbounded, as the design sets the wordmark.
+    static func mlWordmark(_ size: CGFloat) -> Font {
+        mlDisplay(size, .bold)
+    }
+
     /// The mono face carries timers, latency figures and the subscription URL.
     static func mlMono(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .monospaced)

@@ -6,7 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${MIHOMO_VERSION:-v1.19.29}"
+# v1.19.30 is the first that reaches servers using XHTTP's padding and
+# placement options (the service's LTE servers); 1.19.29 fails every probe.
+VERSION="${MIHOMO_VERSION:-v1.19.31}"
 DEST=Resources/mihomo
 mkdir -p "$DEST"
 

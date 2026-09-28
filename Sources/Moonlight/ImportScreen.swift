@@ -118,8 +118,7 @@ struct ImportScreen: View {
             IconView(.check, size: 40, strokeWidth: 2.6)
                 .foregroundStyle(palette.textOnAccent)
                 .frame(width: 88, height: 88)
-                .background(palette.accent)
-                .clipShape(Circle())
+                .mlGlass(.circle, tint: palette.accent, fallback: palette.accent)
                 .transition(.scale(scale: 0.72).combined(with: .opacity))
 
             Text(L.t(.importDone, locale))

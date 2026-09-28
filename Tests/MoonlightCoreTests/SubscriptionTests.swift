@@ -31,6 +31,13 @@ func subscriptionInfoTests() {
         Check.isNil(unlimited.usedFraction, "no quota means no fraction")
         Check.isTrue(unlimited.isActive, "no expiry is active")
 
+        // Remnawave writes "never expires" as a date around 2100 in the header
+        // too; read literally the sidebar said "26891 дней".
+        let forever = SubscriptionInfo.fromHeaders(response([
+            "subscription-userinfo": "upload=0; download=100; total=0; expire=4102444800",
+        ]))
+        Check.isNil(forever.expire, "a 2100 expiry in the header means no expiry")
+
         let partial = SubscriptionInfo.fromHeaders(response([
             "subscription-userinfo": "download=500",
         ]))

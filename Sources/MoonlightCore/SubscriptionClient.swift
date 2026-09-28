@@ -255,6 +255,13 @@ public extension SubscriptionInfo {
     /// A zero `total` or `expire` means *unlimited* in this format, not zero, so
     /// both map to nil rather than to 0. `content-disposition` names the account
     /// and `routing` is a routing profile for another client; neither is read.
+    /// An expiry date, or nil for Remnawave's "never expires" — which it
+    /// writes as a date in 2099 or 2100 rather than leaving the field out, in
+    /// the `/info` JSON and in the header alike.
+    static func expiry(_ date: Date) -> Date? {
+        Calendar(identifier: .gregorian).component(.year, from: date) >= 2099 ? nil : date
+    }
+
     static func fromHeaders(_ response: HTTPURLResponse) -> SubscriptionInfo {
         var info = SubscriptionInfo()
 
@@ -270,7 +277,7 @@ public extension SubscriptionInfo {
                 case "total": info.total = (value ?? 0) > 0 ? value : nil
                 case "expire":
                     if let value, value > 0 {
-                        info.expire = Date(timeIntervalSince1970: TimeInterval(value))
+                        info.expire = Self.expiry(Date(timeIntervalSince1970: TimeInterval(value)))
                     }
                 default: break
                 }
@@ -319,11 +326,9 @@ public extension SubscriptionInfo {
         if let raw = user["expiresAt"] as? String,
            let expire = ISO8601DateFormatter.remnawave.date(from: raw)
             ?? ISO8601DateFormatter.remnawaveWhole.date(from: raw) {
-            // Remnawave spells "never expires" as a date in 2099 — its own
-            // headers send 0 for it. Read literally, it showed a plan with
-            // 26 892 days left.
-            info.expire = Calendar(identifier: .gregorian).component(.year, from: expire) >= 2099
-                ? nil : expire
+            // Read literally, "never expires" showed a plan with 26 892 days
+            // left.
+            info.expire = SubscriptionInfo.expiry(expire)
         }
         if let limit = (user["hwidDeviceLimit"] as? NSNumber)?.intValue, limit > 0 {
             info.deviceLimit = limit

@@ -17,8 +17,9 @@ jobs:
   build:
     # Both slices come off one runner: `swift build --arch arm64 --arch x86_64`
     # needs full Xcode, which the GitHub images have and the Command Line Tools
-    # do not.
-    runs-on: macos-14
+    # do not. macOS 26 for Xcode 26: its SDK is the one with SwiftUI's Liquid
+    # Glass, and an older one builds the flat fallback without complaint.
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +101,10 @@ jobs:
           if [ "${{ matrix.arch }}" = "universal" ]; then
             lipo -info build/Moonlight.app/Contents/MacOS/Moonlight | grep -q "x86_64 arm64"
           fi
+          # Built against an SDK without Liquid Glass, the app falls back to
+          # flat surfaces and still compiles — so check the glass is in it.
+          nm -u build/Moonlight.app/Contents/MacOS/Moonlight | grep -q glassEffect \
+            || { echo "::error::built without Liquid Glass — the SDK is older than macOS 26"; exit 1; }
 
       - name: Package
         env:

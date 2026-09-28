@@ -67,6 +67,9 @@ public enum TunnelIssue: Equatable, Sendable {
             case .versionMismatch: return .helperOutdated
             case .refused: return .coreFailed
             }
+        case is HelperInstaller.Failure:
+            // The helper needed its core updated and the prompt was refused.
+            return .helperOutdated
         case let failure as TunFailure:
             return failure.routesTaken ? .routesTaken : .tunFailed
         case is MihomoConfig.Failure:

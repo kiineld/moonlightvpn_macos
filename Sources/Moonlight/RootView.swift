@@ -135,7 +135,7 @@ private struct Sidebar: View {
         }
     }
 
-    private static let resize = Animation.spring(response: 0.42, dampingFraction: 0.9)
+    private static let resize = Motion.standard
 
     /// The wordmark, or the logo alone when collapsed. The collapse control is
     /// the tab on the sidebar's edge, not a button in here.
@@ -150,7 +150,7 @@ private struct Sidebar: View {
             HStack(spacing: 9) {
                 LogoTile(size: 28, radius: 9)
                 Text("moonlight")
-                    .font(.mlDisplay(15, .bold))
+                    .font(.mlWordmark(15))
                     .tracking(-0.025 * 15)
                     .foregroundStyle(palette.text)
                     .fixedSize()
@@ -379,9 +379,13 @@ struct SidebarShape: Shape {
     }
 }
 
-/// The canvas: `bgDeep`, with two soft washes bleeding in from opposite
-/// corners, as the installer window's backdrop has. Flat, glass has nothing to
-/// bend and reads as a grey card; over a little colour it reads as glass.
+/// The canvas: the desktop, blurred, under `bgDeep` at three quarters — black,
+/// or white in the light theme — with light falling in from two corners.
+///
+/// Liquid Glass over a flat colour has nothing to refract and draws as a grey
+/// slab with no edge, which is how the whole interface looked on a solid black
+/// canvas. Over the blurred desktop it has real light and colour to bend, as
+/// it does in the system's own windows, while the window still reads as black.
 private struct Ambient: View {
     let palette: Palette
     let dark: Bool
@@ -389,22 +393,36 @@ private struct Ambient: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                palette.bgDeep
-                wash(palette.accent, dark ? 0.10 : 0.30, diameter: 760)
-                    .position(x: geometry.size.width - 40, y: 20)
-                wash(palette.purple, dark ? 0.09 : 0.16, diameter: 680)
-                    .position(x: 160, y: geometry.size.height + 60)
+                BehindWindowBlur()
+                palette.bgDeep.opacity(0.76)
+                glow(dark ? 0.10 : 0.06, diameter: 900)
+                    .position(x: geometry.size.width - 60, y: 0)
+                glow(dark ? 0.06 : 0.04, diameter: 760)
+                    .position(x: 140, y: geometry.size.height + 80)
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func wash(_ colour: Color, _ strength: Double, diameter: CGFloat) -> some View {
+    private func glow(_ strength: Double, diameter: CGFloat) -> some View {
         Circle()
-            .fill(RadialGradient(colors: [colour.opacity(strength), colour.opacity(0)],
+            .fill(RadialGradient(colors: [palette.text.opacity(strength), palette.text.opacity(0)],
                                  center: .center, startRadius: 0, endRadius: diameter / 2))
             .frame(width: diameter, height: diameter)
     }
+}
+
+/// The desktop behind the window, blurred by the system.
+struct BehindWindowBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Page header
@@ -456,8 +474,8 @@ private struct PageHeader: View {
 
 // MARK: - Logo
 
-/// The wordmark tile from `assets/logo-tile.svg`, redrawn as vectors so it
-/// paints crisply at every size and follows the accent in light mode.
+/// The logo tile from `assets/logo-tile.svg`, redrawn as vectors so it paints
+/// crisply at every size — lime in both themes, since it is the brand.
 struct LogoTile: View {
     @Environment(\.palette) private var palette
     var size: CGFloat = 32
@@ -469,7 +487,7 @@ struct LogoTile: View {
             func scaled(_ d: String) -> Path {
                 SVGPath(d).path(in: CGRect(origin: .zero, size: canvasSize), viewBox: 44)
             }
-            let ink = GraphicsContext.Shading.color(palette.textOnAccent)
+            let ink = GraphicsContext.Shading.color(palette.brandInk)
             context.fill(scaled("M30 22a8.4 8.4 0 1 1-9.4-8.34A10 10 0 0 0 30 22Z"), with: ink)
             context.fill(
                 Path(ellipseIn: CGRect(x: (30.5 - 1.7) * scale, y: (12.5 - 1.7) * scale,
@@ -483,7 +501,8 @@ struct LogoTile: View {
             )
         }
         .frame(width: size, height: size)
-        .background(palette.accent)
+        // The lime is the brand, and this tile is the one place it appears.
+        .background(palette.brand)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
 }

@@ -39,9 +39,7 @@ struct SubscriptionScreen: View {
     // MARK: - Plan
 
     private var planCard: some View {
-        // The wash is a background rather than a ZStack sibling: a 280pt circle
-        // laid out alongside the content would set the card's height, leaving a
-        // slab of empty accent below the stats.
+        // The one inverted surface in the app: the plan, white on black.
         VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -49,10 +47,10 @@ struct SubscriptionScreen: View {
                             .font(.ml(TypeScale.meta, .heavy))
                             .opacity(0.6)
                         Text(tunnel.info.title ?? L.t(.planUnknown, locale))
-                            .font(.mlDisplay(36))
-                            .tracking(TypeScale.trackDisplay * 36)
+                            .font(.mlDisplay(32))
+                            .tracking(TypeScale.trackDisplay * 32)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.6)
+                            .minimumScaleFactor(0.5)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -75,14 +73,6 @@ struct SubscriptionScreen: View {
         .padding(.horizontal, 26)
         .padding(.vertical, 24)
         .foregroundStyle(palette.textOnAccent)
-        .background(alignment: .bottomTrailing) {
-            Circle()
-                .fill(palette.inkWashSoft)
-                .frame(width: 280, height: 280)
-                .offset(x: 80, y: 140)
-        }
-        // The wash is clipped to the card; the glass behind it is not, so its
-        // rim survives.
         .clipShape(RoundedRectangle(cornerRadius: Radii.panel, style: .continuous))
         .mlGlass(.rounded(Radii.panel), tint: palette.accent, fallback: palette.accent)
     }

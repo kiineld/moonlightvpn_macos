@@ -30,6 +30,9 @@ public enum HelperInstaller {
     public static let installRoot = "/Library/Application Support/Moonlight"
     public static let daemonPlist = "/Library/LaunchDaemons/\(HelperClient.label).plist"
 
+    /// The helper's root-owned copy of the core, which TUN mode runs.
+    public static var installedCore: URL { URL(fileURLWithPath: "\(installRoot)/mihomo") }
+
     public static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlist)
     }

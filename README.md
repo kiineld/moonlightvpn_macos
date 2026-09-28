@@ -122,6 +122,15 @@ waiting to happen, so it is deliberately narrow:
   already run `sudo`. This spares the user a password prompt per connect; it is
   not a boundary against an administrator.
 
+The helper runs a root-owned **copy** of the core, made when it was installed,
+and nothing used to update that copy — so an app update that needed a newer core
+left TUN on the old one. The service's LTE servers use XHTTP's padding and
+placement options, which mihomo reaches only from 1.19.30 (1.19.29 fails every
+probe): after the core moved to 1.19.31 they worked everywhere but in TUN. The
+app now compares the helper's core version with its own and, when they differ,
+replaces it on the next TUN connect — the same one admin prompt the install
+asks for — and Settings says so with an update button.
+
 ## Logs and connections
 
 Two screens over the core's own streams.
@@ -417,14 +426,18 @@ one download on first connect and saves ~24 MB in the bundle.
 
 ## Design system
 
-Tokens map one-for-one from the source CSS. Dark is lime `#D2FF1F` on slate
-`#101828`; light flips the accent to yellow `#FFE078`. The accent splits into
-four roles that must stay distinct, because light mode depends on it:
+**Black and white.** The interface is monochrome: a black canvas, surfaces of
+Liquid Glass, white type, and white as the one interactive colour — black in
+the light theme, which mirrors it. Colour is spent in exactly two places: the
+logo's lime tile, which is the brand and appears nowhere else, and the small
+signals that carry meaning — latency (green under 150 ms, yellow under 300,
+orange past it), errors, log levels. The token names are the ones every screen
+was written against; what they resolve to is what changed:
 
-- `accent` — fills (buttons, the connect knob, active pills)
-- `accentInk` — accent as type or a glyph (`#EFAE2E` in light)
-- `accentInkStrong` — accent type sitting *on* an accent wash
-- `accentLine` — accent as a thin mark (bars, dots, rings)
+- `accent` — fills (the primary button, active pills, a switch that is on)
+- `accentInk` — accent as type or a glyph
+- `textOnAccent` — type sitting on an accent fill
+- `brand` / `brandInk` — the logo tile and its moon, nothing else
 
 Icons are **lucide 0.468.0**, the set the design is drawn with, carried across as
 raw SVG path data rather than redrawn or swapped for SF Symbols, so stroke
@@ -432,83 +445,78 @@ geometry is identical. `scripts/gen-icons.py` converts every `<circle>`,
 `<rect>`, `<line>` and `<polyline>` to path commands at generation time, so the
 renderer only parses `d` strings.
 
-Fonts are Onest (UI/body) and Unbounded (display) as variable TTFs from Google
-Fonts — the design ships `woff2`, which Core Text cannot register.
+Fonts are Onest (UI/body) and Unbounded (display — titles, hero numbers, the
+plan, stat values, the wordmark) as variable TTFs from Google Fonts; the design
+ships `woff2`, which Core Text cannot register.
 
-The connect screen is deliberately bare: how long the tunnel has been up, one
-button, and its state in words. The button is a squircle holding a round knob —
-neutral with a power glyph when off, filled with the accent and carrying a stop
-square when on — so the change of state is a change of colour, not of layout.
-The state pill under it leads to the connections screen. Ping and refresh are
-icon buttons over the server list, the list they act on; the theme switch lives
-in Settings. What is left of the plan sits in the sidebar, the one place it is
-shown.
+**The connect control is the moon from the logo.** Disconnected it is the
+logo's crescent, dim, with its two stars; connected the cut slides off and it is
+a full moon, lit, and the stars fade. Changing state is the moon changing
+phase. The crescent is a disc with a second disc cut out of it
+(`.destinationOut`), not painted over, so the glass beneath shows through its
+dark side. While the tunnel connects or disconnects a thin orbit turns round it.
+The state pill under it leads to the connections screen; ping and refresh are
+icon buttons over the server list, the list they act on.
 
 The routing mode is mihomo's own `mode`, patched into the running core and
 written into every config it is built with; existing connections are closed
 so they reopen under it. Global points mihomo's `GLOBAL` group at the app's
-selector, so the chosen server is still the one used. Server descriptions come
-from the subscription's `serverDescription`, which the service includes in some
-responses and not others — the last ones seen are kept.
+selector, so the chosen server is still the one used. Descriptions come from
+the subscription — a server's `serverDescription`, a group's `description` (a
+balancer such as "🇵🇱 Poland LTE 1" is a row like any server) — which the
+service includes in some responses and not others; the last ones seen are kept.
 
 The server list works as on the phone: a pill naming the server in use, which
-opens into the full list beneath it. The list is always in the hierarchy and
-only its height moves — from nothing to its measured content, capped to the
-window and scrolling past that — on a spring, so opening is one continuous
-motion. Picking a server closes it. Closed, the power button is drawn at twice
+opens into the full list beneath it. Closed, the power button is drawn at twice
 its size, and the column it heads — time, button, state, servers — is centred
-on the *window*, as much space above as below; centring the button alone left
-the column hanging low under a band of empty space, and the page itself starts
-under the title bar, so its own centre sits lower than the eye expects.
-Opening the list shrinks the button and lifts the column to the top, and the
-list takes the room that frees. The offset is worked out from the parts above
-and below the button, which the drawer does not change, so the whole move is
-one animation rather than a jump once the page is re-measured.
+on the *window*, as much space above as below. Opening the list shrinks the
+button and lifts the column to the top, and the list takes the room that frees.
+The offset is worked out from the parts above and below the button, which the
+drawer does not change, so the move is one animation; and a line appearing
+under the button — an error, the service's message — re-centres the page on the
+same curve rather than in one frame, which is what made a connect or a refresh
+look like the page jumped.
 
-Everything the drawer moves shares one spring, damped just short of settling on
-its own — it eases in and lands without an overshoot. The card unfolds from the
-pill, a hair smaller and transparent while closed; its first rows fade up a
-beat apart as it opens. Closing drops the rows and the card quickly, so no
-empty card is left folding after its rows have gone. A latency reads `–` until the server has
-been probed, and `n/a` only once a probe got no answer within 5000 ms; timeouts
-are remembered across launches like the numbers are.
+### Motion
 
-The window is a `bgDeep` canvas with two soft washes bleeding in from opposite
-corners, and a floating sidebar inset 8pt from its edges, starting just under
-the traffic lights. Cards carry no outline — the canvas is a step darker than
-any surface on it in both themes, so the surface alone separates them. The
-sidebar collapses to a 64pt icon rail from the half-circle tab halfway down its
-edge; the tab's chevron points the way a click moves it — left to collapse,
-right to open. Collapsing is animated where it is triggered, so the page
-beside the sidebar moves with it instead of jumping to its new width.
+One curve: everything that moves — a page arriving, the drawer, the power
+button, a selection pill, the sidebar folding — moves on `Motion.standard`, a
+spring damped just short of settling on its own, so it eases in and lands
+without an overshoot. Only changes with nothing moving in them (a colour, a
+hover wash) use `Motion.paint`, a short fade. The app used to carry six curves,
+two of them overshooting, and screens felt like different apps.
+
+Spinners are driven by the clock (`TimelineView`), never by
+`repeatForever`. A repeating animation claims every other change in its
+transaction and every layout change while it runs, so a spinning refresh icon
+dragged its button round in a loop whenever the page moved, and the connect
+spinner wobbled as the page re-centred under it.
+
+The connections page draws nothing until its first answer arrives — the empty
+state used to flash on every visit — and keeps rows in the order processes
+appeared, where sorting by live traffic reshuffled them every second.
 
 ### Liquid Glass
 
-On macOS 26 and later every surface is Liquid Glass: the sidebar and its active
-row, cards, buttons, pills, fields and the segmented controls' tracks. Accent
-fills become accent-tinted glass — the plan card is lime glass — while icon
-tiles, the logo and small status chips stay solid, because their colour is the
-information. Before 26 the same shapes are drawn as flat surfaces, at the same
-sizes, so nothing moves between systems. The canvas washes are there for the
-glass: over a flat colour it has nothing to bend and reads as a grey card.
+Every surface is Apple's Liquid Glass, through SwiftUI's own `glassEffect`
+(`Sources/Moonlight/Glass.swift`): cards, rows, pills, buttons, fields, icon
+tiles, the sidebar and its tab, the tray. A state is a tint on the glass —
+white for the primary button, a wash for a selection — never a colour painted
+over it. Before macOS 26 the same shapes are flat surfaces with a hairline, at
+the same sizes, so nothing moves between systems.
 
-The sidebar's tab is not a separate piece of glass. The panel and a circle
-centred on its edge sit in one `NSGlassEffectContainerView`, which draws
-touching glass as a single piece — so the tab is a bump grown out of the panel
-with one continuous rim, where a glass view clipped to a half shape showed its
-square rim as a notch.
+Glass needs something behind it to refract. Over a flat black canvas it drew as
+a grey slab with no edge, so the window is see-through: the canvas is the
+desktop, blurred by the system (`NSVisualEffectView`, behind-window), under
+black at three quarters, with a faint light falling in from two corners. The
+window still reads as black, and the glass on it has real light to bend.
 
-The glass is `NSGlassEffectView`, looked up **by name at runtime**
-(`Sources/Moonlight/Glass.swift`). Neither the Command Line Tools this builds
-with nor CI's Xcode ships the macOS 26 SDK, so neither that class nor SwiftUI's
-`glassEffect` exists at compile time — but the class is there at runtime
-whatever SDK the app was linked against, and `style`, `tintColor` and
-`cornerRadius` are plain Objective-C properties that key-value coding reaches
-without headers. Each key is checked with `responds(to:)` first, because KVC
-raises on a key it does not know: a property renamed in some later release costs
-the effect, not the app. The glass view also sits inside a host that returns
-`nil` from `hitTest`, since an `NSView` in a SwiftUI button's label otherwise
-swallows the click.
+The app used to reach for `NSGlassEffectView` by name at runtime, because it
+built against the macOS 15 SDK; hosted in SwiftUI that view drew flat and could
+not follow an animating frame. It now builds against the macOS 26 SDK, and the
+release workflow checks the binary references `glassEffect` — an older SDK
+compiles the flat fallback without complaint, which would ship an app with no
+glass.
 
 | | |
 |---|---|
@@ -533,7 +541,8 @@ by dragging either way. The backdrop is drawn by
 in step with the palette. `scripts/screenshots.sh` regenerates the
 images above.
 
-Requires Swift 5.9+ (Xcode 15 Command Line Tools) and macOS 12+.
+Requires the macOS 26 SDK (Xcode 26, or Command Line Tools that ship it) for
+Liquid Glass; an older SDK builds, with flat surfaces. The app runs on macOS 12+.
 
 ### Staying on Monterey
 

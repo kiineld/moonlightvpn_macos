@@ -1,21 +1,21 @@
 import SwiftUI
 
-/// Moonlight colour system — lime on slate.
+/// Moonlight colour system — black and white.
 ///
-/// Mapped one-for-one from `tokens/colors.css`. Base values first, then semantic
-/// aliases. Light mode is the same system flipped, with two deliberate
-/// departures the source calls out:
+/// The interface is monochrome: a black canvas, near-black surfaces told apart
+/// by a step of grey and a hairline, white type, and white as the one
+/// interactive colour (black, in the light theme). Colour is spent in exactly
+/// two places — the logo's lime tile, which is the brand and appears nowhere
+/// else, and the small signals that carry meaning: latency, errors, log levels.
 ///
-/// 1. The accent is **yellow**, not lime — acid lime on near-white neither fills
-///    nor reads. Ink type stays on it, so the accent is a bright fill in both.
-/// 2. Category fills keep their dark-theme hues, because ink on a dark purple or
-///    red slab fails contrast.
-///
-/// The accent splits into four roles that must stay distinct, because light mode
-/// depends on it: `accent` fills, `accentInk` is accent as type or a glyph,
-/// `accentInkStrong` is accent type sitting *on* an accent wash, and
-/// `accentLine` is accent as a thin mark. In dark mode all four coincide.
+/// The token names are the ones every screen was written against; what they
+/// resolve to is what changed. `accent` fills, `accentInk` is the accent as
+/// type or a glyph, `textOnAccent` sits on an accent fill.
 public struct Palette: Sendable {
+
+    // MARK: Brand — the logo, and nothing else
+    public let brand: Color
+    public let brandInk: Color
 
     // MARK: Accents
     public let lime: Color
@@ -66,7 +66,7 @@ public struct Palette: Sendable {
     public let warning: Color
     public let info: Color
 
-    // MARK: Category fills
+    // MARK: Category fills — tiles behind a glyph, all one quiet grey now
     public let cat1: Color
     public let cat2: Color
     public let cat3: Color
@@ -74,11 +74,7 @@ public struct Palette: Sendable {
     public let cat5: Color
     public let heroGold: Color
 
-    // MARK: Service-status severities
-    //
-    // Two roles per state. `-ink` is the readable one (pill text, dots, bars —
-    // anything drawn ON the page). The plain token is a solid fill that always
-    // carries #101828 text, so it stays light in both themes.
+    // MARK: Signals — the only colour in the interface proper
     public let stUp: Color
     public let stUpInk: Color
     public let stDegraded: Color
@@ -94,87 +90,91 @@ public struct Palette: Sendable {
     public let telegramBlue: Color
 
     public static let dark = Palette(
-        lime: .hex(0xD2FF1F), limeDeep: .hex(0xC2F015), purple: .hex(0xAB93E1),
-        yellow: .hex(0xFFE078), blue: .hex(0xB6CAEB), orange: .hex(0xFB7A54),
-        red: .hex(0xFF6B5A),
+        brand: .hex(0xD2FF1F), brandInk: .hex(0x0A0A0A),
 
-        limeWash: .hex(0xD2FF1F, 0.13), limeWashSoft: .hex(0xD2FF1F, 0.06),
-        redWash: .hex(0xFF6B5A, 0.13),
-        inkWash: .hex(0x101828, 0.14), inkWashSoft: .hex(0x101828, 0.06),
-        hairline: .hex(0xFFFFFF, 0.09), hairlineSoft: .hex(0xFFFFFF, 0.05),
+        lime: .hex(0xD2FF1F), limeDeep: .hex(0xC2F015), purple: .hex(0x8A8A8A),
+        yellow: .hex(0xFFD60A), blue: .hex(0xA3A3A3), orange: .hex(0xFF9F0A),
+        red: .hex(0xFF453A),
 
-        bg: .hex(0x101828), bgDeep: .hex(0x0B111E), surface: .hex(0x182131),
-        surface2: .hex(0x212B3B), surface3: .hex(0x2A3547),
-        surfaceNav: .hex(0x182131, 0.92),
+        limeWash: .hex(0xFFFFFF, 0.08), limeWashSoft: .hex(0xFFFFFF, 0.04),
+        redWash: .hex(0xFF453A, 0.14),
+        inkWash: .hex(0x000000, 0.10), inkWashSoft: .hex(0x000000, 0.05),
+        hairline: .hex(0xFFFFFF, 0.10), hairlineSoft: .hex(0xFFFFFF, 0.06),
 
-        text: .hex(0xFFFFFF), text2: .hex(0xAEB7C7), textMuted: .hex(0x878EA8),
-        textOnAccent: .hex(0x101828), textLink: .hex(0xD2FF1F),
-        textLinkHover: .hex(0xE4FF6A),
+        bg: .hex(0x0A0A0A), bgDeep: .hex(0x000000), surface: .hex(0x111111),
+        surface2: .hex(0x1A1A1A), surface3: .hex(0x262626),
+        surfaceNav: .hex(0x0A0A0A),
 
-        accent: .hex(0xD2FF1F), accentHover: .hex(0xC2F015),
-        accentQuiet: .hex(0xD2FF1F, 0.13), accentInk: .hex(0xD2FF1F),
-        accentInkStrong: .hex(0xD2FF1F), accentLine: .hex(0xD2FF1F),
+        text: .hex(0xF5F5F5), text2: .hex(0xA3A3A3), textMuted: .hex(0x737373),
+        textOnAccent: .hex(0x000000), textLink: .hex(0xF5F5F5),
+        textLinkHover: .hex(0xFFFFFF),
 
-        statusSecure: .hex(0xD2FF1F), danger: .hex(0xFF6B5A),
-        dangerQuiet: .hex(0xFF6B5A, 0.13), warning: .hex(0xFFE078),
-        info: .hex(0xB6CAEB),
+        accent: .hex(0xFFFFFF), accentHover: .hex(0xE5E5E5),
+        accentQuiet: .hex(0xFFFFFF, 0.08), accentInk: .hex(0xFFFFFF),
+        accentInkStrong: .hex(0xFFFFFF), accentLine: .hex(0xFFFFFF, 0.6),
 
-        cat1: .hex(0xD2FF1F), cat2: .hex(0xAB93E1), cat3: .hex(0xB6CAEB),
-        cat4: .hex(0xFFE078), cat5: .hex(0xFB7A54), heroGold: .hex(0xEFAE2E),
+        statusSecure: .hex(0xFFFFFF), danger: .hex(0xFF453A),
+        dangerQuiet: .hex(0xFF453A, 0.14), warning: .hex(0xFFD60A),
+        info: .hex(0xA3A3A3),
 
-        stUp: .hex(0xD2FF1F), stUpInk: .hex(0xD2FF1F),
-        stDegraded: .hex(0xFFE078), stDegradedInk: .hex(0xFFE078),
-        stMaintenance: .hex(0xB6CAEB), stMaintenanceInk: .hex(0xB6CAEB),
-        stPartial: .hex(0xFB7A54), stPartialInk: .hex(0xFB7A54),
-        stDown: .hex(0xFF6B5A), stDownInk: .hex(0xFF6B5A),
+        cat1: .hex(0x1F1F1F), cat2: .hex(0x1F1F1F), cat3: .hex(0x1F1F1F),
+        cat4: .hex(0x1F1F1F), cat5: .hex(0x1F1F1F), heroGold: .hex(0xFFFFFF),
+
+        stUp: .hex(0x30D158), stUpInk: .hex(0x30D158),
+        stDegraded: .hex(0xFFD60A), stDegradedInk: .hex(0xFFD60A),
+        stMaintenance: .hex(0xA3A3A3), stMaintenanceInk: .hex(0xA3A3A3),
+        stPartial: .hex(0xFF9F0A), stPartialInk: .hex(0xFF9F0A),
+        stDown: .hex(0xFF453A), stDownInk: .hex(0xFF453A),
 
         telegramBlue: .hex(0x29A0DA)
     )
 
     public static let light = Palette(
-        lime: .hex(0xFFE078), limeDeep: .hex(0xF5CE52), purple: .hex(0xAB93E1),
-        yellow: .hex(0xFFE078), blue: .hex(0xB6CAEB), orange: .hex(0xFB7A54),
-        red: .hex(0xFF6B5A),
+        brand: .hex(0xD2FF1F), brandInk: .hex(0x0A0A0A),
 
-        limeWash: .hex(0xB07908, 0.16), limeWashSoft: .hex(0xB07908, 0.07),
-        redWash: .hex(0xFF6B5A, 0.13),
-        inkWash: .hex(0x101828, 0.14), inkWashSoft: .hex(0x101828, 0.06),
-        hairline: .hex(0x101828, 0.11), hairlineSoft: .hex(0x101828, 0.06),
+        lime: .hex(0xD2FF1F), limeDeep: .hex(0xC2F015), purple: .hex(0x737373),
+        yellow: .hex(0xB58900), blue: .hex(0x525252), orange: .hex(0xC2410C),
+        red: .hex(0xD70015),
 
-        bg: .hex(0xF2F3ED), bgDeep: .hex(0xE6E8DF), surface: .hex(0xFFFFFF),
-        surface2: .hex(0xF1F3EB), surface3: .hex(0xE1E4D9),
-        surfaceNav: .hex(0xFFFFFF, 0.92),
+        limeWash: .hex(0x000000, 0.06), limeWashSoft: .hex(0x000000, 0.03),
+        redWash: .hex(0xD70015, 0.10),
+        inkWash: .hex(0xFFFFFF, 0.16), inkWashSoft: .hex(0xFFFFFF, 0.08),
+        hairline: .hex(0x000000, 0.10), hairlineSoft: .hex(0x000000, 0.06),
 
-        text: .hex(0x101828), text2: .hex(0x475467), textMuted: .hex(0x667085),
-        textOnAccent: .hex(0x101828), textLink: .hex(0x7A5600),
-        textLinkHover: .hex(0x5E4200),
+        bg: .hex(0xFAFAFA), bgDeep: .hex(0xFFFFFF), surface: .hex(0xF5F5F5),
+        surface2: .hex(0xEDEDED), surface3: .hex(0xE0E0E0),
+        surfaceNav: .hex(0xFAFAFA),
 
-        accent: .hex(0xFFE078), accentHover: .hex(0xF5CE52),
-        accentQuiet: .hex(0xB07908, 0.16), accentInk: .hex(0xEFAE2E),
-        accentInkStrong: .hex(0x6B4A00), accentLine: .hex(0xEFAE2E),
+        text: .hex(0x0A0A0A), text2: .hex(0x525252), textMuted: .hex(0x8A8A8A),
+        textOnAccent: .hex(0xFFFFFF), textLink: .hex(0x0A0A0A),
+        textLinkHover: .hex(0x000000),
 
-        statusSecure: .hex(0xFFE078), danger: .hex(0xFF6B5A),
-        dangerQuiet: .hex(0xFF6B5A, 0.13), warning: .hex(0x9A6A00),
-        info: .hex(0xB6CAEB),
+        accent: .hex(0x0A0A0A), accentHover: .hex(0x262626),
+        accentQuiet: .hex(0x000000, 0.06), accentInk: .hex(0x0A0A0A),
+        accentInkStrong: .hex(0x0A0A0A), accentLine: .hex(0x000000, 0.5),
 
-        // cat-4 is deepened so the yellow category stays distinct from the
-        // now-yellow accent.
-        cat1: .hex(0xFFE078), cat2: .hex(0xAB93E1), cat3: .hex(0xB6CAEB),
-        cat4: .hex(0xEFAE2E), cat5: .hex(0xFB7A54), heroGold: .hex(0xFFE078),
+        statusSecure: .hex(0x0A0A0A), danger: .hex(0xD70015),
+        dangerQuiet: .hex(0xD70015, 0.10), warning: .hex(0xB58900),
+        info: .hex(0x525252),
 
-        stUp: .hex(0xC2EA45), stUpInk: .hex(0x4C7A0F),
-        stDegraded: .hex(0xFFD75C), stDegradedInk: .hex(0x9A6A00),
-        stMaintenance: .hex(0xAFC9EE), stMaintenanceInk: .hex(0x3D6392),
-        stPartial: .hex(0xFB9B7C), stPartialInk: .hex(0xC2410C),
-        stDown: .hex(0xFF8A7A), stDownInk: .hex(0xB42318),
+        cat1: .hex(0xEDEDED), cat2: .hex(0xEDEDED), cat3: .hex(0xEDEDED),
+        cat4: .hex(0xEDEDED), cat5: .hex(0xEDEDED), heroGold: .hex(0x0A0A0A),
+
+        stUp: .hex(0x248A3D), stUpInk: .hex(0x248A3D),
+        stDegraded: .hex(0xB58900), stDegradedInk: .hex(0xB58900),
+        stMaintenance: .hex(0x525252), stMaintenanceInk: .hex(0x525252),
+        stPartial: .hex(0xC2410C), stPartialInk: .hex(0xC2410C),
+        stDown: .hex(0xD70015), stDownInk: .hex(0xD70015),
 
         telegramBlue: .hex(0x29A0DA)
     )
 
-    /// The design keys ping colour off latency, not off a status enum.
+    /// Latency as a signal: fine, usable, slow. Tuned to what a tunnel out of
+    /// Russia actually measures — the old 40/100 ms steps painted every server
+    /// here the "slow" colour, which told nobody anything.
     public func pingColor(_ ms: Int) -> Color {
-        if ms < 40 { return stUpInk }
-        if ms < 100 { return stDegradedInk }
+        if ms < 150 { return stUpInk }
+        if ms < 300 { return stDegradedInk }
         return stPartialInk
     }
 }

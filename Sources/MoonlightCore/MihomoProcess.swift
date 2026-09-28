@@ -47,6 +47,30 @@ public final class MihomoProcess: @unchecked Sendable {
         self.dataDirectory = dataDirectory
     }
 
+    /// The release number in `mihomo -v`'s first line — "1.19.31" — or nil for
+    /// a build that has none.
+    public static func version(fromOutput output: String) -> String? {
+        guard let first = output.split(whereSeparator: \.isNewline).first,
+              let match = first.range(of: #"\bv(\d+\.\d+\.\d+)\b"#, options: .regularExpression)
+        else { return nil }
+        return String(first[match].dropFirst())
+    }
+
+    /// The release number of the core at `binary`, asked of the binary itself.
+    public static func version(of binary: URL) -> String? {
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else { return nil }
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["-v"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return version(fromOutput: String(decoding: data, as: UTF8.self))
+    }
+
     /// Where the config this core runs is kept: inside its home, not beside it.
     /// mihomo reloads only from a path under its home directory, and a config
     /// kept one level up started fine and then failed every subscription

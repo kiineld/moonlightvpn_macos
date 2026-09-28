@@ -133,7 +133,7 @@ struct LogsScreen: View {
                         // Follow the tail, the way a terminal does, unless the
                         // reader has scrolled away to look at something.
                         guard follow, let last = filtered.last else { return }
-                        withAnimation(Motion.paint) { proxy.scrollTo(last.id, anchor: .bottom) }
+                        withAnimation(Motion.standard) { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
                 if filtered.isEmpty {

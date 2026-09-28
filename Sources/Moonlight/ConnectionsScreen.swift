@@ -16,6 +16,12 @@ struct ConnectionsScreen: View {
     @Binding var page: Page
 
     @State private var connections: [MihomoAPI.Connection] = []
+    /// Nothing is drawn until the first answer arrives: the empty state used to
+    /// flash for a moment on every visit and then give way to the table.
+    @State private var loaded = false
+    /// The order processes first appeared in. Sorting by live traffic
+    /// reshuffled the rows every second, so nothing stayed under the pointer.
+    @State private var order: [String] = []
     @State private var query = ""
     @State private var expanded: String?
     @State private var poll: Task<Void, Never>?
@@ -25,16 +31,26 @@ struct ConnectionsScreen: View {
         let matching = text.isEmpty ? connections : connections.filter {
             $0.process.lowercased().contains(text) || $0.host.lowercased().contains(text)
         }
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }) { first, _ in first }
         return Dictionary(grouping: matching, by: \.process)
             .map { ConnectionGroup(process: $0.key, path: $0.value.first?.processPath ?? "", items: $0.value) }
-            .sorted { $0.download > $1.download }
+            .sorted { (rank[$0.process] ?? .max, $1.download) < (rank[$1.process] ?? .max, $0.download) }
     }
 
     var body: some View {
         VStack(spacing: 12) {
             controls
-            if groups.isEmpty { empty } else { table }
+            if loaded {
+                Group {
+                    if groups.isEmpty { empty } else { table }
+                }
+                .transition(.opacity)
+            } else {
+                Spacer(minLength: 0)
+            }
         }
+        .animation(Motion.standard, value: loaded)
+        .animation(Motion.standard, value: groups.isEmpty)
         .rise(0, page)
         .onAppear(perform: start)
         .onDisappear { poll?.cancel() }
@@ -105,7 +121,7 @@ struct ConnectionsScreen: View {
                                 expanded: expanded == group.process,
                                 locale: locale,
                                 toggle: {
-                                    withAnimation(Motion.paint) {
+                                    withAnimation(Motion.standard) {
                                         expanded = expanded == group.process ? nil : group.process
                                     }
                                 },
@@ -154,7 +170,20 @@ struct ConnectionsScreen: View {
         poll?.cancel()
         poll = Task {
             while !Task.isCancelled {
-                connections = await tunnel.currentConnections()
+                let latest = await tunnel.currentConnections()
+                guard !Task.isCancelled else { break }
+                // New processes join at the end, heaviest first among
+                // themselves; ones already listed keep their place.
+                let known = Set(order)
+                let newcomers = Dictionary(grouping: latest, by: \.process)
+                    .filter { !known.contains($0.key) }
+                    .sorted { $0.value.reduce(0) { $0 + $1.download } > $1.value.reduce(0) { $0 + $1.download } }
+                    .map(\.key)
+                withAnimation(loaded ? Motion.standard : nil) {
+                    order += newcomers
+                    connections = latest
+                    loaded = true
+                }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
@@ -202,8 +231,7 @@ private struct ProcessRow: View {
                         .foregroundStyle(palette.text2)
                         .frame(minWidth: 18)
                         .padding(.vertical, 2)
-                        .background(palette.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .mlGlass(.rounded(5), fallback: palette.surface2)
                     ProcessIcon(path: group.path)
                     Text(group.process)
                         .font(.ml(12.5, .bold))

@@ -79,7 +79,7 @@ private struct TrayContent: View {
             HStack(spacing: 9) {
                 LogoTile(size: 26, radius: 8)
                 Text("moonlight")
-                    .font(.mlDisplay(15, .bold))
+                    .font(.mlWordmark(15))
                     .tracking(-0.025 * 15)
                     .foregroundStyle(palette.text)
                     .fixedSize()
@@ -250,7 +250,8 @@ private struct TrayContent: View {
                     IconView(.zap, size: 15, strokeWidth: 2.2)
                         .foregroundStyle(tunnel.autoSelect ? palette.textOnAccent : palette.accentInk)
                         .frame(width: 26, height: 26)
-                        .background(Circle().fill(tunnel.autoSelect ? palette.accent : palette.surface3))
+                        .mlGlass(.circle, tint: tunnel.autoSelect ? palette.accent : nil,
+                                 fallback: palette.surface3)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(L.t(.auto, locale))
                             .font(.ml(13.5, .bold))
@@ -311,7 +312,9 @@ private struct TrayContent: View {
             .mlGlass(.capsule,
                      tint: connected || busy ? nil : palette.accent,
                      fallback: connected || busy ? palette.surface3 : palette.accent)
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+            // Floats over the list: a ring of the canvas colour separates it
+            // from the rows scrolling beneath, where a shadow would be a glow.
+            .overlay(Capsule().strokeBorder(palette.bgDeep, lineWidth: 3).padding(-3))
         }
         .pressButton()
         .disabled(!tunnel.hasSubscription || busy)
@@ -374,22 +377,19 @@ private struct TrayContent: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
-        .background(palette.text.opacity(0.03))
-        .overlay(alignment: .top) { palette.hairlineSoft.frame(height: 1) }
+        .mlGlass(.rounded(0), fallback: palette.surface)
     }
 
-    /// The window's canvas in miniature: `bgDeep` with the accent bleeding in
-    /// from one corner, so the glass on top has something to bend.
+    /// The window's canvas in miniature: `bgDeep` with light falling in from
+    /// the top, so the glass on it reads as glass.
     private var backdrop: some View {
+        // Over the popover's own glass rather than hiding it: black at three
+        // quarters, so the desktop's light still reaches the glass on top.
         ZStack {
-            palette.bgDeep
+            palette.bgDeep.opacity(0.76)
             RadialGradient(
-                colors: [palette.accent.opacity(0.12), palette.accent.opacity(0)],
-                center: .topTrailing, startRadius: 0, endRadius: 320
-            )
-            RadialGradient(
-                colors: [palette.purple.opacity(0.10), palette.purple.opacity(0)],
-                center: .bottomLeading, startRadius: 0, endRadius: 300
+                colors: [palette.text.opacity(0.10), palette.text.opacity(0)],
+                center: .topTrailing, startRadius: 0, endRadius: 360
             )
         }
         .ignoresSafeArea()
@@ -467,15 +467,14 @@ private struct TrayRowFrame<Leading: View, Trailing: View>: View {
         .padding(.leading, 10)
         .padding(.trailing, 8)
         .padding(.vertical, 9)
+        // The selected row sits on glass, as in the window's drawer; the rest
+        // take only a hover wash.
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(selected ? palette.accent.opacity(0.13)
-                      : palette.text.opacity(hovering ? 0.05 : 0))
-        }
-        .overlay {
             if selected {
+                Color.clear.mlGlass(.rounded(14), fallback: palette.surface2)
+            } else {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(palette.accent.opacity(0.5), lineWidth: 1)
+                    .fill(palette.text.opacity(hovering ? 0.05 : 0))
             }
         }
         .onHover { hovering = $0 }
@@ -536,12 +535,9 @@ private struct TrayChip: View {
             .foregroundStyle(quiet ? palette.textMuted : palette.text)
             .lineLimit(1)
             .truncationMode(.tail)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 7)
             .frame(height: 19)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(palette.text.opacity(quiet ? 0.06 : 0.1))
-            )
+            .mlGlass(.capsule, fallback: palette.text.opacity(quiet ? 0.06 : 0.1))
             .layoutPriority(quiet ? 1 : 0)
     }
 }

@@ -102,7 +102,7 @@ private struct RiseIn: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 18)
+            .offset(y: shown ? 0 : Motion.riseDistance)
             .animation(Motion.rise(delay: delay), value: shown)
             .onAppear { shown = true }
             .onChange(of: trigger) { _ in
@@ -217,20 +217,54 @@ struct Overline: View {
     }
 }
 
-/// The 42×42 rounded tile a category-coloured glyph sits in.
+/// The rounded tile a row's glyph sits in: a quiet grey step with the glyph
+/// in the text colour.
 struct IconTile: View {
     @Environment(\.palette) private var palette
     let icon: Icon
     var fill: Color
-    var size: CGFloat = 42
-    var glyph: CGFloat = 19
+    var size: CGFloat = 40
+    var glyph: CGFloat = 17
 
     var body: some View {
         IconView(icon, size: glyph)
-            .foregroundStyle(palette.textOnAccent)
+            .foregroundStyle(palette.text)
             .frame(width: size, height: size)
-            .background(fill)
-            .clipShape(RoundedRectangle(cornerRadius: Radii.tile, style: .continuous))
+            .mlGlass(.rounded(Radii.tile), fallback: fill)
+    }
+}
+
+/// Turns or pulses a glyph while something is in flight.
+///
+/// Driven by the clock, never by a repeating animation: `repeatForever` claims
+/// every other change in its transaction and every layout change while it
+/// runs, so a spinning refresh icon dragged its own button round in a loop
+/// whenever the page around it moved.
+struct InFlight: ViewModifier {
+    enum Kind { case spin, pulse }
+    let kind: Kind
+    let active: Bool
+    var period: Double = 0.9
+
+    func body(content: Content) -> some View {
+        if active {
+            TimelineView(.animation) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let phase = t.truncatingRemainder(dividingBy: period) / period
+                switch kind {
+                case .spin: content.rotationEffect(.degrees(phase * 360))
+                case .pulse: content.opacity(0.35 + 0.65 * abs(cos(phase * .pi)))
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func inFlight(_ kind: InFlight.Kind, _ active: Bool) -> some View {
+        modifier(InFlight(kind: kind, active: active))
     }
 }
 
@@ -250,8 +284,10 @@ struct MLToggle: View {
                 // A translucent ink rather than `surface3` when off: on glass the
                 // solid grey all but vanished against the light theme.
                 Capsule().fill(isOn ? palette.accent : palette.text.opacity(0.12))
+                // The knob is the opposite of its track: on a white track in
+                // the dark theme a white knob would vanish.
                 Circle()
-                    .fill(.white)
+                    .fill(isOn ? palette.textOnAccent : palette.text)
                     .frame(width: 20, height: 20)
                     .offset(x: isOn ? 21 : 3)
             }
@@ -328,32 +364,18 @@ struct GlassIconButton: View {
     var blinking = false
     var action: () -> Void
 
-    @State private var phase: Double = 0
 
     var body: some View {
         Button(action: action) {
-            IconView(icon, size: 15, strokeWidth: 2.2)
-                .rotationEffect(.degrees(spinning ? phase : 0))
-                .opacity(blinking ? 0.35 + 0.65 * abs(cos(phase / 90)) : 1)
+            IconView(icon, size: 15, strokeWidth: 2)
+                .inFlight(.spin, spinning)
+                .inFlight(.pulse, blinking)
                 .foregroundStyle(palette.accentInk)
                 .frame(width: 32, height: 32)
                 .mlGlass(.circle, fallback: palette.surface)
                 .contentShape(Circle())
         }
         .pressIcon()
-        .onAppear { advance() }
-        .onChange(of: spinning) { _ in advance() }
-        .onChange(of: blinking) { _ in advance() }
-    }
-
-    /// The design spins the refresh glyph and blinks the ping glyph while each
-    /// is in flight. A repeating rotation drives both.
-    private func advance() {
-        phase = 0
-        guard spinning || blinking else { return }
-        withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-            phase = 360
-        }
     }
 }
 
@@ -393,13 +415,12 @@ struct ActionRow: View {
     var spinning = false
     var action: () -> Void
 
-    @State private var phase: Double = 0
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
                 IconTile(icon: icon, fill: fill)
-                    .rotationEffect(.degrees(spinning ? phase : 0))
+                    .inFlight(.spin, spinning)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.ml(15, .heavy))
@@ -420,13 +441,6 @@ struct ActionRow: View {
             .contentShape(Rectangle())
         }
         .pressCard()
-        .onChange(of: spinning) { _ in
-            phase = 0
-            guard spinning else { return }
-            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                phase = 360
-            }
-        }
     }
 }
 
@@ -513,7 +527,7 @@ struct AnnounceBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
-                    withAnimation(Motion.paint) { dismissed = text }
+                    withAnimation(Motion.standard) { dismissed = text }
                 } label: {
                     IconView(.x, size: 14)
                         .foregroundStyle(palette.textMuted)

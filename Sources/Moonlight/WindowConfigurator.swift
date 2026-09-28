@@ -35,6 +35,10 @@ struct WindowConfigurator: NSViewRepresentable {
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        // See-through, so the canvas can be the desktop blurred behind it —
+        // what the glass on top refracts. See `Ambient`.
+        window.isOpaque = false
+        window.backgroundColor = .clear
         // With no title bar to grab, the strip itself has to be the drag handle.
         window.isMovableByWindowBackground = true
 

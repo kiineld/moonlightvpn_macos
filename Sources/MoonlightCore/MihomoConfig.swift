@@ -135,17 +135,22 @@ public struct MihomoConfig {
         return try Yams.dump(object: root, sortKeys: true)
     }
 
-    /// Each server's `serverDescription`, by name. Blank ones are left out.
+    /// What the service says each row is for, by name: a server's
+    /// `serverDescription`, or a group's `description` — a balancer such as
+    /// "🇵🇱 Poland LTE 1" is a row in the list like any server. Blank ones are
+    /// left out.
     public static func serverDescriptions(panelYAML: String) -> [String: String] {
-        guard let root = try? Yams.load(yaml: panelYAML) as? [String: Any],
-              let proxies = root["proxies"] as? [[String: Any]] else { return [:] }
+        guard let root = try? Yams.load(yaml: panelYAML) as? [String: Any] else { return [:] }
         var descriptions: [String: String] = [:]
-        for proxy in proxies {
-            guard let name = proxy["name"] as? String,
-                  let text = (proxy["serverDescription"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty else { continue }
-            descriptions[name] = text
+        let entries = [("proxies", "serverDescription"), ("proxy-groups", "description")]
+        for (section, key) in entries {
+            for entry in root[section] as? [[String: Any]] ?? [] {
+                guard let name = entry["name"] as? String,
+                      let text = (entry[key] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty else { continue }
+                descriptions[name] = text
+            }
         }
         return descriptions
     }

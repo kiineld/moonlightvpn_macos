@@ -90,17 +90,19 @@ struct SettingsScreen: View {
     }
 
     private var helperRow: some View {
-        HStack(spacing: 14) {
+        // Read once per render rather than per use: it can launch the core.
+        let stale = tunnel.helperInstalled && !tunnel.helperCoreIsCurrent
+        return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(tunnel.helperInstalled
-                     ? L.t(.helperInstalled, locale)
+                Text(stale ? L.t(.helperStale, locale)
+                     : tunnel.helperInstalled ? L.t(.helperInstalled, locale)
                      : L.t(.helperInstall, locale))
                     .font(.ml(14.5, .bold))
                     .foregroundStyle(palette.text)
                     // Wrap rather than truncate: a clipped "Установить помощ…"
                     // is worse than two lines.
                     .fixedSize(horizontal: false, vertical: true)
-                Text(helperError ?? L.t(.helperInstallSub, locale))
+                Text(helperError ?? L.t(stale ? .helperStaleSub : .helperInstallSub, locale))
                     .font(.ml(12))
                     .foregroundStyle(helperError == nil ? palette.textMuted : palette.danger)
                     .fixedSize(horizontal: false, vertical: true)
@@ -109,10 +111,12 @@ struct SettingsScreen: View {
 
             Button {
                 Task {
-                    tunnel.helperInstalled ? await removeHelper() : await installHelper()
+                    if stale { await installHelper() }
+                    else if tunnel.helperInstalled { await removeHelper() }
+                    else { await installHelper() }
                 }
             } label: {
-                Text(L.t(tunnel.helperInstalled ? .remove : .install, locale))
+                Text(L.t(stale ? .updateInstall : tunnel.helperInstalled ? .remove : .install, locale))
                     .font(.ml(12.5, .heavy))
                     .lineLimit(1)
                     .fixedSize()
@@ -324,7 +328,7 @@ struct SettingsScreen: View {
                     LogoTile(size: 42, radius: Radii.tile)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("moonlight")
-                            .font(.mlDisplay(16, .bold))
+                            .font(.mlWordmark(16))
                             .tracking(-0.025 * 16)
                             .foregroundStyle(palette.text)
                             .fixedSize()

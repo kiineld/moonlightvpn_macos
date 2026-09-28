@@ -86,7 +86,7 @@ public enum L {
         // Menu bar tray
         case routingRule, routingGlobal, routingDirect, pingAll, pingOne, searchServers
         case openWindow, connectAction, disconnectAction, keepOpen, stopKeepingOpen
-        case nothingFound
+        case nothingFound, helperStale, helperStaleSub
         // Subscription service extras
         case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
         case trafficResets, removeSubscriptionSub, hideAnnounce
@@ -289,6 +289,8 @@ public enum L {
             case .keepOpen: return "Не закрывать"
             case .stopKeepingOpen: return "Закрывать при клике мимо"
             case .nothingFound: return "Ничего не найдено"
+            case .helperStale: return "Помощник нужно обновить"
+            case .helperStaleSub: return "В нём старое ядро — без обновления часть серверов не работает в TUN"
             case .autoUpdate: return "Автообновление подписки"
             case .autoUpdateSub: return "Как часто проверять серверы, дни и трафик"
             case .autoUpdateOff: return "Выкл"
@@ -516,6 +518,8 @@ public enum L {
             case .keepOpen: return "Keep open"
             case .stopKeepingOpen: return "Close when clicking away"
             case .nothingFound: return "Nothing found"
+            case .helperStale: return "The helper needs an update"
+            case .helperStaleSub: return "It carries an older core, and some servers fail in TUN until it is updated"
             case .autoUpdate: return "Update the subscription automatically"
             case .autoUpdateSub: return "How often to check servers, days and traffic"
             case .autoUpdateOff: return "Off"

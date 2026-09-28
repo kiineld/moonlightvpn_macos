@@ -432,8 +432,7 @@ private struct AppRow: View {
                             .foregroundStyle(palette.accentInk)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(palette.accentQuiet)
-                            .clipShape(Capsule())
+                            .mlGlass(.capsule, fallback: palette.accentQuiet)
                     }
                 }
                 Text(app.executable)

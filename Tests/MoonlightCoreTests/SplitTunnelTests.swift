@@ -216,6 +216,14 @@ func updaterTests() {
         Check.isTrue(!Updater.isNewer("1.0", than: "1.0.0"), "trailing zeros are equal")
     }
 
+    Check.suite("MihomoProcess · core version") {
+        Check.equal(MihomoProcess.version(fromOutput: "Mihomo Meta v1.19.31 darwin arm64 with go1.26.8 Mon Sep 14 13:24:49 UTC 2026\nUse tags: with_gvisor\n"),
+                    "1.19.31", "the version from `mihomo -v`")
+        Check.equal(MihomoProcess.version(fromOutput: "Mihomo Meta alpha-1a2b3c darwin arm64"), nil,
+                    "a build with no release number has none")
+        Check.equal(MihomoProcess.version(fromOutput: ""), nil, "nor does nothing")
+    }
+
     Check.suite("Updater · release checksum") {
         let hash = String(repeating: "ab", count: 32)
         // `shasum -a 256` output, which is what the release attaches.

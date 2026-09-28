@@ -52,6 +52,11 @@ public final class TunnelController: ObservableObject {
 
     private let support: URL
     private let coreBinary: URL
+    private let helperBinary: URL
+    /// The helper core's version as last read, so the check costs a process
+    /// launch once rather than on every connect.
+    private var installedCoreVersion: String??
+    private lazy var bundledCoreVersion: String? = MihomoProcess.version(of: coreBinary)
     private var configURL: URL { core.configURL }
     private var panelURL: URL { support.appendingPathComponent("subscription.yaml") }
 
@@ -85,6 +90,7 @@ public final class TunnelController: ObservableObject {
         try? FileManager.default.removeItem(at: support.appendingPathComponent("config.yaml"))
 
         coreBinary = bundle.coreBinaryURL
+        helperBinary = bundle.helperBinaryURL
         core = MihomoProcess(binary: bundle.coreBinaryURL, dataDirectory: coreHome)
         api = MihomoAPI(port: preferences.controllerPort, secret: preferences.coreSecret)
 
@@ -99,8 +105,7 @@ public final class TunnelController: ObservableObject {
             var cached = preferences.cachedInfo ?? SubscriptionInfo()
             // Cached by an older build that read Remnawave's "never expires"
             // (a date in 2099) literally; fixed at the next refresh anyway.
-            if let expire = cached.expire,
-               Calendar(identifier: .gregorian).component(.year, from: expire) >= 2099 {
+            if let expire = cached.expire, SubscriptionInfo.expiry(expire) == nil {
                 cached.expire = nil
             }
             info = cached
@@ -150,6 +155,37 @@ public final class TunnelController: ObservableObject {
     }
     public var tunnelMode: TunnelMode { preferences.tunnelMode }
     public var helperInstalled: Bool { HelperInstaller.isInstalled && helper.isInstalled }
+
+    /// Whether TUN mode would run the core this build ships.
+    ///
+    /// The helper runs a root-owned copy made when it was installed, and
+    /// nothing updated that copy afterwards — so an app update that needed a
+    /// newer core (the service's XHTTP servers need 1.19.30 or later) left TUN
+    /// on the old one, and those servers kept failing in TUN alone.
+    public var helperCoreIsCurrent: Bool {
+        guard helperInstalled else { return true }
+        if installedCoreVersion == nil {
+            installedCoreVersion = .some(MihomoProcess.version(of: HelperInstaller.installedCore))
+        }
+        guard let bundled = bundledCoreVersion else { return true }
+        return installedCoreVersion == .some(bundled)
+    }
+
+    /// Replaces the helper's copy of the core with this build's — the one admin
+    /// prompt the install itself asks for.
+    public func updateHelper() async throws {
+        LogStore.shared.client("Updating the system helper to this build's core")
+        let helperBinary = helperBinary, coreBinary = coreBinary
+        try await Task.detached(priority: .userInitiated) {
+            try HelperInstaller.install(helper: helperBinary, core: coreBinary)
+        }.value
+        installedCoreVersion = nil
+        // launchd takes a moment to bring the daemon back and open its socket.
+        for _ in 0..<30 {
+            if (try? helper.version()) != nil { return }
+            try await Task.sleep(nanoseconds: 150_000_000)
+        }
+    }
 
     /// The core's own log tail, for the settings screen's diagnostics.
     public var coreLog: String {
@@ -263,8 +299,11 @@ public final class TunnelController: ObservableObject {
                 try await reloadRunningCore()
             } else {
                 // No core yet: the raw proxy list is all there is to show until
-                // one comes up and the selector can be read properly.
-                nodes = try nodesFromPanelConfig()
+                // one comes up and the selector can be read properly — but only
+                // when there is nothing better on screen. Swapping a selector
+                // list for the raw one and back made every refresh flicker
+                // between two different lists and counts.
+                if nodes.isEmpty { nodes = try nodesFromPanelConfig() }
                 await ensureCoreRunning()
             }
             return true
@@ -353,6 +392,7 @@ public final class TunnelController: ObservableObject {
                 SystemProxy.enable(port: preferences.mixedPort)
 
             case .tun:
+                if !helperCoreIsCurrent { try await updateHelper() }
                 // TUN needs the core to run as root, so the idle one has to go.
                 core.stop()
                 let yaml = try MihomoConfig.build(
