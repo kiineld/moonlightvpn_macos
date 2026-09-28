@@ -127,9 +127,19 @@ and nothing used to update that copy — so an app update that needed a newer co
 left TUN on the old one. The service's LTE servers use XHTTP's padding and
 placement options, which mihomo reaches only from 1.19.30 (1.19.29 fails every
 probe): after the core moved to 1.19.31 they worked everywhere but in TUN. The
-app now compares the helper's core version with its own and, when they differ,
-replaces it on the next TUN connect — the same one admin prompt the install
-asks for — and Settings says so with an update button.
+app now compares the installed helper — its program and its core's version —
+with its own and, when they differ, replaces it on the next TUN connect (the
+same one admin prompt the install asks for); Settings says so with an update
+button.
+
+The helper stops its core and exits on SIGTERM, which is how `launchctl bootout`
+and a shutdown ask it to go. Until 1.6.4 its signal handlers sat on the main
+queue while the main thread never left its `accept` loop, so SIGTERM was ignored
+and launchd SIGKILLed it five seconds later — orphaning a connected core with
+the tunnel's interface and routes. Install and removal also wait until launchd
+has really removed the old service before going on: `bootout` returns early,
+and a `bootstrap` in that window fails with "Bootstrap failed: 5". Files are
+replaced by rename, never by writing into a binary that may still be running.
 
 ## Logs and connections
 
