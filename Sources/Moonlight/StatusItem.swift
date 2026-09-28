@@ -1,24 +1,36 @@
 import AppKit
+import SwiftUI
 import Combine
 import MoonlightCore
 
-/// The menu bar item.
+/// The menu bar item, and the tray it opens.
 ///
 /// AppKit rather than SwiftUI's `MenuBarExtra`, which is macOS 13+ — and this
-/// app runs on Monterey. One `NSStatusItem` covers every version, and the menu
-/// is rebuilt each time it opens, so it reports the tunnel's state at the moment
-/// it is read rather than whenever SwiftUI last thought to re-render it.
+/// app runs on Monterey. An `NSStatusItem` with an `NSPopover` covers every
+/// version; the popover hosts ``TrayView``, which observes the tunnel directly,
+/// so the speeds and latencies in it move while it is open.
 @MainActor
-final class StatusItemController: NSObject, NSMenuDelegate {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private var item: NSStatusItem?
     private let tunnel: TunnelController
     private let settings: AppSettings
+    private let popover = NSPopover()
+    private let tray = TrayState()
     private var cancellables: Set<AnyCancellable> = []
 
     init(tunnel: TunnelController, settings: AppSettings) {
         self.tunnel = tunnel
         self.settings = settings
         super.init()
+
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        let root = TrayView(tray: tray, openWindow: { [weak self] in self?.openWindow() })
+            .environmentObject(tunnel)
+            .environmentObject(settings)
+        popover.contentViewController = NSHostingController(rootView: root)
+        popover.contentSize = NSSize(width: TrayMetrics.width, height: TrayMetrics.height)
 
         settings.$menuBarIcon
             .sink { [weak self] shown in self?.setVisible(shown) }
@@ -28,10 +40,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         tunnel.$state
             .sink { [weak self] state in self?.updateIcon(connected: state.isConnected) }
             .store(in: &cancellables)
+        // Pinned, a click elsewhere leaves it open; only the item closes it.
+        tray.$pinned
+            .sink { [weak self] pinned in
+                self?.popover.behavior = pinned ? .applicationDefined : .transient
+            }
+            .store(in: &cancellables)
+        settings.$theme
+            .sink { [weak self] theme in
+                self?.popover.appearance = NSAppearance(named: theme == .dark ? .darkAqua : .aqua)
+            }
+            .store(in: &cancellables)
     }
 
     private func setVisible(_ shown: Bool) {
         guard shown else {
+            popover.performClose(nil)
             if let item { NSStatusBar.system.removeStatusItem(item) }
             item = nil
             return
@@ -40,9 +64,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = MenuBarIcon.image(connected: tunnel.state.isConnected)
-        let menu = NSMenu()
-        menu.delegate = self
-        item.menu = menu
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover(_:))
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         self.item = item
     }
 
@@ -50,72 +74,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item?.button?.image = MenuBarIcon.image(connected: connected)
     }
 
-    // MARK: - Menu
+    // MARK: - Tray
 
-    /// Rebuilt on every open: the traffic figures and the node list are only
-    /// correct at the moment they are read.
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let locale = settings.locale
-
-        let toggle = NSMenuItem(
-            title: L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale),
-            action: #selector(toggleTunnel), keyEquivalent: ""
-        )
-        toggle.target = self
-        toggle.isEnabled = tunnel.hasSubscription && !tunnel.state.isBusy
-        menu.addItem(toggle)
-
-        if tunnel.state.isConnected {
-            menu.addItem(info("↓ \(Format.rate(tunnel.rateDown, locale: locale))   ↑ \(Format.rate(tunnel.rateUp, locale: locale))"))
-            menu.addItem(info(Format.duration(tunnel.uptime)))
+    @objc private func togglePopover(_ sender: NSStatusBarButton) {
+        if popover.isShown {
+            popover.performClose(sender)
+            return
         }
-        if let days = tunnel.info.daysLeft {
-            menu.addItem(info("\(L.t(.remainingCaps, locale)): \(Format.days(days, locale: locale))"))
-        }
-
-        if !tunnel.nodes.isEmpty {
-            menu.addItem(.separator())
-            let servers = NSMenuItem(title: L.t(.servers, locale), action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for node in tunnel.nodes.prefix(25) {
-                let title = [node.flag, node.title].compactMap { $0 }.joined(separator: " ")
-                let entry = NSMenuItem(title: title, action: #selector(pick(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.representedObject = node.name
-                entry.state = node.name == tunnel.selectedNode ? .on : .off
-                submenu.addItem(entry)
-            }
-            servers.submenu = submenu
-            menu.addItem(servers)
-        }
-
-        menu.addItem(.separator())
-        let open = NSMenuItem(title: L.t(.navConnect, locale),
-                              action: #selector(openWindow), keyEquivalent: "")
-        open.target = self
-        menu.addItem(open)
-
-        let quit = NSMenuItem(title: L.t(.quit, locale),
-                              action: #selector(quit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
+        // As tall as the design wants, but never past the screen it opens on.
+        let room = (sender.window?.screen?.visibleFrame.height ?? 900) - 24
+        popover.contentSize = NSSize(width: TrayMetrics.width, height: min(TrayMetrics.height, room))
+        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        // Key, so the search field takes typing without the app coming forward
+        // and pulling its window up behind the tray.
+        popover.contentViewController?.view.window?.makeKey()
     }
 
-    private func info(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
+    func popoverDidClose(_ notification: Notification) {
+        tray.pinned = false
     }
 
-    @objc private func toggleTunnel() { Task { await tunnel.toggle() } }
-
-    @objc private func pick(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        Task { await tunnel.select(node: name) }
-    }
-
-    @objc private func openWindow() {
+    private func openWindow() {
+        if !tray.pinned { popover.performClose(nil) }
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.mainWindowCandidate {
             if window.isMiniaturized { window.deminiaturize(nil) }
@@ -128,6 +108,4 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSWorkspace.shared.open(Bundle.main.bundleURL)
         }
     }
-
-    @objc private func quit() { NSApp.terminate(nil) }
 }

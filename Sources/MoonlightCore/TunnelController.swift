@@ -39,6 +39,8 @@ public final class TunnelController: ObservableObject {
 
     @Published public var selectedNode: String?
     @Published public var autoSelect: Bool
+    /// Rules, everything through the server, or nothing — see ``RoutingMode``.
+    @Published public private(set) var routingMode: RoutingMode
 
     // MARK: Collaborators
 
@@ -88,6 +90,7 @@ public final class TunnelController: ObservableObject {
 
         selectedNode = preferences.selectedNode
         autoSelect = preferences.autoSelect
+        routingMode = preferences.routingMode
         lastRefresh = preferences.lastRefresh
         // Cached figures outlive the subscription they describe, and a fresh
         // install that inherited them from a removed plan would show days and
@@ -175,6 +178,7 @@ public final class TunnelController: ObservableObject {
         preferences.subscriptionURL = nil
         preferences.cachedInfo = nil
         preferences.selectedNode = nil
+        preferences.serverDescriptions = [:]
         preferences.lastRefresh = nil
         lastRefresh = nil
         issue = nil
@@ -232,6 +236,7 @@ public final class TunnelController: ObservableObject {
                 // Another subscription's choices mean nothing for this one.
                 preferences.selectedNode = nil
                 preferences.latencies = [:]
+                preferences.serverDescriptions = [:]
                 selectedNode = nil
             }
             try result.yaml.write(to: panelURL, atomically: true, encoding: .utf8)
@@ -500,6 +505,10 @@ public final class TunnelController: ObservableObject {
             }
             guard let target else { return }
             try await api.select(node: target, in: group)
+            // Global mode sends everything through mihomo's own GLOBAL group,
+            // which knows nothing of this selector unless pointed at it — the
+            // user's choice would otherwise be ignored the moment they switch.
+            try? await api.select(node: group, in: "GLOBAL")
             if !autoSelect { selectedNode = target }
         } catch {
             LogStore.shared.client("Could not switch server: \(error.localizedDescription)",
@@ -554,6 +563,15 @@ public final class TunnelController: ObservableObject {
         return labels
     }
 
+    /// The subscription's server descriptions, or the last ones it carried
+    /// when this copy came without them.
+    private func currentDescriptions() -> [String: String] {
+        let fresh = MihomoConfig.serverDescriptions(panelYAML: (try? loadPanelYAML()) ?? "")
+        guard !fresh.isEmpty else { return preferences.serverDescriptions }
+        preferences.serverDescriptions = fresh
+        return fresh
+    }
+
     private func discoverSelector() async throws {
         let groups = try await api.groups()
         let selectors = groups.filter { $0.type == "Selector" }
@@ -588,6 +606,10 @@ public final class TunnelController: ObservableObject {
             } else if let members = membership[listed[index].name] {
                 listed[index].protocolLabel = members.lazy.compactMap { labels[$0] }.first
             }
+        }
+        let descriptions = currentDescriptions()
+        for index in listed.indices {
+            listed[index].serverDescription = descriptions[listed[index].name]
         }
         nodes = listed
         restoreLatencies()
@@ -664,6 +686,17 @@ public final class TunnelController: ObservableObject {
         if autoSelect { await applySelection() }
     }
 
+    /// Measures one server, for the row's own ping button.
+    public func ping(node name: String) async {
+        guard !pendingProbes.contains(name), await ensureCoreRunning() else { return }
+        pendingProbes.insert(name)
+        let delay = await api.delay(node: name)
+        await Self.record(name: name, delay: delay, on: self)
+        var saved = preferences.latencies
+        saved[name] = delay ?? -1
+        preferences.latencies = saved
+    }
+
     /// Applies one node's result as it lands, on the main actor.
     private static func record(name: String, delay: Int?, on controller: TunnelController) async {
         controller.pendingProbes.remove(name)
@@ -727,6 +760,25 @@ public final class TunnelController: ObservableObject {
     }
 
     // MARK: - Settings that change the config
+
+    /// Switches the running core at once; the next config it is built with
+    /// carries the choice too.
+    public func setRoutingMode(_ mode: RoutingMode) async {
+        guard mode != routingMode else { return }
+        routingMode = mode
+        preferences.routingMode = mode
+        guard state.isConnected || core.isRunning else { return }
+        do {
+            try await api.patchConfig(["mode": mode.rawValue])
+            LogStore.shared.client("Routing mode: \(mode.rawValue)")
+            // Connections already open keep the route they started on. Closed,
+            // programs reopen them, and the new mode takes them.
+            if state.isConnected { await closeAllConnections() }
+        } catch {
+            LogStore.shared.client("Could not switch routing mode: \(error.localizedDescription)",
+                                   level: .warning)
+        }
+    }
 
     public func setTunnelMode(_ mode: TunnelMode) async {
         guard mode != preferences.tunnelMode else { return }
@@ -862,6 +914,7 @@ public final class TunnelController: ObservableObject {
             secret: preferences.coreSecret,
             mixedPort: preferences.mixedPort,
             mode: mode,
+            routingMode: preferences.routingMode,
             // Per-process rules need an interface to route; in system-proxy mode
             // mihomo never sees the process, so the screen is honest about being
             // inert rather than silently doing nothing.

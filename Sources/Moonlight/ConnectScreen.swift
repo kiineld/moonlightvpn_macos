@@ -13,9 +13,13 @@ struct ConnectScreen: View {
     /// The drawer's natural height, measured, so it opens to exactly its
     /// content rather than to a guess.
     @State private var drawerContent: CGFloat = 0
-    /// Everything above the drawer, measured, so the closed page can be
-    /// centred on it.
-    @State private var headHeight: CGFloat = 0
+    /// The parts above and below the power button, measured. Neither changes
+    /// when the drawer opens, so the button's size and the page's offset can
+    /// be worked out from them in the same animation as the drawer — measuring
+    /// the whole column instead re-read it after the button had resized, and
+    /// the page jumped at the end of the spring.
+    @State private var aboveButton: CGFloat = 0
+    @State private var belowButton: CGFloat = 0
 
     /// One curve for everything the drawer moves: its height, its fade and the
     /// chevron — a spring, so the list settles instead of stopping dead.
@@ -25,33 +29,92 @@ struct ConnectScreen: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let height = geometry.size.height
+            let button = PowerButton.side(large: !serversOpen)
             VStack(spacing: 0) {
-                head
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: HeadHeightKey.self, value: proxy.size.height)
-                        }
-                    )
+                timer
+                    .padding(.bottom, 20)
+                    .background(measure(AboveButtonKey.self))
+                    .rise(0, page)
+                PowerButton(state: tunnel.state, enabled: tunnel.hasSubscription,
+                            large: !serversOpen) {
+                    Task { await tunnel.toggle() }
+                }
+                .help("\(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale)) · ⌘⇧C")
+                .background(bloom)
+                .rise(0, page)
+                belowButtonContent
+                    .background(measure(BelowButtonKey.self))
                 if !tunnel.nodes.isEmpty {
-                    drawer(room: geometry.size.height - headHeight - Self.drawerGap)
+                    drawer(room: height - aboveButton - PowerButton.side(large: false)
+                           - belowButton - Self.drawerGap)
                         .frame(maxWidth: 560)
                         .padding(.top, Self.drawerGap)
                 }
             }
-            // Closed, the button and the picker under it sit in the middle of
-            // the page; top-aligned they left half the window empty. Opening
-            // the drawer lifts them to the top on the drawer's own spring, and
-            // the list takes the room that frees.
-            .padding(.top, serversOpen ? 0 : max(0, (geometry.size.height - headHeight) / 2))
+            // Closed, the button is the page: large, with its centre on the
+            // page's centre, and pulled up only as far as it takes for the rest
+            // to fit. Opening the drawer shrinks it and lifts the column to the
+            // top on the drawer's own spring, and the list takes the room that
+            // frees.
+            .padding(.top, serversOpen ? 0 : Self.centredOffset(
+                page: height, above: aboveButton, button: button, below: belowButton))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .onPreferenceChange(HeadHeightKey.self) { headHeight = $0 }
+        .onPreferenceChange(AboveButtonKey.self) { aboveButton = $0 }
+        .onPreferenceChange(BelowButtonKey.self) { belowButton = $0 }
     }
 
-    /// The hero and the picker — the part of the page that is centred.
-    private var head: some View {
+    /// How far down to start the column so the button's centre lands on the
+    /// page's, without pushing what is under it off the bottom.
+    static func centredOffset(page: CGFloat, above: CGFloat, button: CGFloat, below: CGFloat) -> CGFloat {
+        let centred = page / 2 - above - button / 2
+        let lowest = page - above - button - below
+        return max(0, min(centred, lowest))
+    }
+
+    private func measure<Key: PreferenceKey>(_ key: Key.Type) -> some View where Key.Value == CGFloat {
+        GeometryReader { proxy in
+            Color.clear.preference(key: key, value: proxy.size.height)
+        }
+    }
+
+    // MARK: - Hero
+
+    /// How long the tunnel has been up.
+    private var timer: some View {
         VStack(spacing: 0) {
-            hero.rise(0, page)
+            Text(L.t(.connectionTime, locale))
+                .font(.ml(12.5, .semibold))
+                .foregroundStyle(palette.text2)
+            Text(Format.duration(tunnel.uptime))
+                .font(.ml(20, .semibold).monospacedDigit())
+                .foregroundStyle(tunnel.state.isConnected ? palette.text : palette.textMuted)
+                .padding(.top, 3)
+        }
+    }
+
+    /// The state in words, why it is not connected, the service's message,
+    /// and the server picker.
+    private var belowButtonContent: some View {
+        VStack(spacing: 0) {
+            StatusPill(
+                title: statusLabel,
+                connected: tunnel.state.isConnected
+            ) {
+                page = .connections
+            }
+            .help(L.t(.titleConnections, locale))
+            .padding(.top, 18)
+            .rise(0, page)
+
+            // Why it is not connected, or why the list may be stale — a failed
+            // connect used to leave only "Отключено", with the reason in the log.
+            if let issue = tunnel.issue {
+                IssueLine(issue: issue, centered: true)
+                    .frame(maxWidth: 440)
+                    .padding(.top, 14)
+            }
             if let announce = tunnel.info.announce {
                 AnnounceBanner(text: announce)
                     .frame(maxWidth: 560)
@@ -65,55 +128,17 @@ struct ConnectScreen: View {
         }
     }
 
-    // MARK: - Hero
-
-    /// How long the tunnel has been up, the one control that matters, and what
-    /// state it is in — nothing else competes for the top of the window.
-    private var hero: some View {
-        VStack(spacing: 0) {
-            Text(L.t(.connectionTime, locale))
-                .font(.ml(12.5, .semibold))
-                .foregroundStyle(palette.text2)
-            Text(Format.duration(tunnel.uptime))
-                .font(.ml(20, .semibold).monospacedDigit())
-                .foregroundStyle(tunnel.state.isConnected ? palette.text : palette.textMuted)
-                .padding(.top, 3)
-
-            PowerButton(state: tunnel.state, enabled: tunnel.hasSubscription) {
-                Task { await tunnel.toggle() }
-            }
-            .help("\(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale)) · ⌘⇧C")
-            .padding(.top, 20)
-
-            StatusPill(
-                title: statusLabel,
-                connected: tunnel.state.isConnected
-            ) {
-                page = .connections
-            }
-            .help(L.t(.titleConnections, locale))
-            .padding(.top, 18)
-
-            // Why it is not connected, or why the list may be stale — a failed
-            // connect used to leave only "Отключено", with the reason in the log.
-            if let issue = tunnel.issue {
-                IssueLine(issue: issue, centered: true)
-                    .frame(maxWidth: 440)
-                    .padding(.top, 14)
-            }
-        }
-        // A faint accent bloom while the tunnel is up. It is also what gives
-        // the glass above it something to bend.
-        .background(
-            RadialGradient(
-                colors: [palette.accent.opacity(0.16), palette.accent.opacity(0)],
-                center: .center, startRadius: 0, endRadius: 180
-            )
-            .frame(width: 460, height: 360)
-            .opacity(tunnel.state.isConnected ? 1 : 0)
-            .animation(Motion.enter, value: tunnel.state.isConnected)
-            .allowsHitTesting(false)
+    /// A faint accent bloom while the tunnel is up. It is also what gives the
+    /// glass above it something to bend.
+    private var bloom: some View {
+        RadialGradient(
+            colors: [palette.accent.opacity(0.16), palette.accent.opacity(0)],
+            center: .center, startRadius: 0, endRadius: 180
         )
+        .frame(width: 460, height: 360)
+        .opacity(tunnel.state.isConnected ? 1 : 0)
+        .animation(Motion.enter, value: tunnel.state.isConnected)
+        .allowsHitTesting(false)
     }
 
     private var statusLabel: String {
@@ -362,30 +387,41 @@ private struct PowerButton: View {
     @Environment(\.palette) private var palette
     let state: ConnectionState
     let enabled: Bool
+    /// Large while it is the only thing on the page; the drawer shrinks it.
+    var large = false
     let action: () -> Void
 
     @State private var hovering = false
 
-    private static let tile: CGFloat = 92
-    private static let knob: CGFloat = 58
+    /// Everything is drawn at this multiple of the compact size, so the knob,
+    /// the glyph and the corner grow together rather than the tile alone.
+    private static let largeScale: CGFloat = 1.5
+    private static let compactTile: CGFloat = 92
+
+    static func side(large: Bool) -> CGFloat { compactTile * (large ? largeScale : 1) }
+
+    private var scale: CGFloat { large ? Self.largeScale : 1 }
+    private var tile: CGFloat { Self.compactTile * scale }
+    private var knob: CGFloat { 58 * scale }
+    private var corner: CGFloat { 28 * scale }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
                     .fill(state.isConnected ? palette.accent : palette.surface3)
-                    .frame(width: Self.knob, height: Self.knob)
+                    .frame(width: knob, height: knob)
                     .shadow(color: state.isConnected ? palette.accent.opacity(0.45) : .clear,
-                            radius: 14)
+                            radius: 14 * scale)
                 if state.isBusy {
                     SpinnerArc()
-                        .frame(width: Self.knob + 12, height: Self.knob + 12)
+                        .frame(width: knob + 12 * scale, height: knob + 12 * scale)
                 }
                 glyph
             }
-            .frame(width: Self.tile, height: Self.tile)
-            .mlGlass(.rounded(28), fallback: palette.surface)
-            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .frame(width: tile, height: tile)
+            .mlGlass(.rounded(corner), fallback: palette.surface)
+            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         }
         .buttonStyle(PressScale(scale: 0.95))
         .disabled(!enabled || state.isBusy)
@@ -398,11 +434,11 @@ private struct PowerButton: View {
     @ViewBuilder
     private var glyph: some View {
         if state.isConnected {
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 5 * scale, style: .continuous)
                 .fill(palette.textOnAccent)
-                .frame(width: 20, height: 20)
+                .frame(width: 20 * scale, height: 20 * scale)
         } else {
-            IconView(.power, size: 24, strokeWidth: 2.4)
+            IconView(.power, size: 24 * scale, strokeWidth: 2.4)
                 .foregroundStyle(hovering && enabled ? palette.accentInk : palette.text)
         }
     }
@@ -519,7 +555,7 @@ private struct NodeRow: View {
 
 /// The dot beside a latency: the ping colour when measured, the danger colour
 /// when the probe timed out, muted when not measured yet.
-private func latencyTone(_ node: Node, _ palette: Palette) -> Color {
+func latencyTone(_ node: Node, _ palette: Palette) -> Color {
     if let latency = node.latency { return palette.pingColor(latency) }
     return node.unreachable ? palette.danger : palette.textMuted
 }
@@ -532,8 +568,16 @@ private struct DrawerHeightKey: PreferenceKey {
     }
 }
 
-/// The height of the hero and picker together.
-private struct HeadHeightKey: PreferenceKey {
+/// The height of what sits above the power button.
+private struct AboveButtonKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// The height of what sits below it, the drawer aside.
+private struct BelowButtonKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())

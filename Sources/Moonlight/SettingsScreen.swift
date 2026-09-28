@@ -18,11 +18,21 @@ struct SettingsScreen: View {
     var body: some View {
         // The design's content area scrolls; settings is the screen that
         // overflows first on a short window.
-        ScrollView {
-            columns.padding(.bottom, 8).rise(0, page)
+        ScrollViewReader { scroller in
+            ScrollView {
+                columns.padding(.bottom, 8).rise(0, page)
+            }
+            .mlScrollIndicators(hidden: true)
+            // The update card is the last thing on the page, and its progress
+            // opens beneath it — below the window's edge on a short window.
+            .onChange(of: updater.state.isUnderWay) { underWay in
+                guard underWay else { return }
+                withAnimation(Motion.slide) { scroller.scrollTo(Self.aboutID, anchor: .bottom) }
+            }
         }
-        .mlScrollIndicators(hidden: true)
     }
+
+    private static let aboutID = "about"
 
     private var columns: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -304,6 +314,10 @@ struct SettingsScreen: View {
     }
 
     private var aboutCard: some View {
+        aboutPanel.id(Self.aboutID)
+    }
+
+    private var aboutPanel: some View {
         Panel(padding: 20) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 14) {
@@ -325,7 +339,9 @@ struct SettingsScreen: View {
                     updateButton
                 }
 
-                if case .available(let version, _) = updater.state {
+                if let progress = updateProgress {
+                    progress.padding(.top, 14)
+                } else if case .available(let version, _) = updater.state {
                     Text("\(L.t(.updateAvailable, locale)) \(version)")
                         .font(.ml(12))
                         .foregroundStyle(palette.accentInk)
@@ -367,11 +383,11 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var updateButton: some View {
         switch updater.state {
-        case .checking, .downloading, .installing:
+        case .checking, .downloading, .verifying, .installing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(L.t(progressLabel, locale))
-                    .font(.ml(12.5, .heavy))
+                Text(progressText)
+                    .font(.ml(12.5, .heavy).monospacedDigit())
                     .foregroundStyle(palette.textMuted)
                     .lineLimit(1)
                     .fixedSize()
@@ -411,12 +427,66 @@ struct SettingsScreen: View {
         }
     }
 
+    /// Beside the spinner: how much has arrived while downloading, the stage
+    /// otherwise.
+    private var progressText: String {
+        if case .downloading(let received, let total) = updater.state {
+            return Format.transfer(received, of: total, locale: locale)
+        }
+        return L.t(progressLabel, locale)
+    }
+
     private var progressLabel: L.Key {
         switch updater.state {
         case .checking: return .updateChecking
+        case .verifying: return .updateVerifying
         case .installing: return .updateInstalling
         default: return .updateDownloading
         }
+    }
+
+    /// While an update is under way: what it is doing, how far along it is,
+    /// and what happens next. A spinner alone left people unsure whether a
+    /// 35 MB download was moving at all, or what they were waiting for.
+    private var updateProgress: AnyView? {
+        let version = updater.pendingVersion.map { " \($0)" } ?? ""
+        let fraction: Double?
+        let detail: String
+        switch updater.state {
+        case .downloading(let received, let total):
+            // The megabytes are beside the spinner; this line says what the
+            // wait ends in.
+            fraction = total.map { Double(received) / Double(max($0, 1)) } ?? 0
+            detail = L.t(.updateDownloadHint, locale)
+        case .verifying:
+            fraction = 1
+            detail = L.t(.updateVerifyingHint, locale)
+        case .installing:
+            fraction = 1
+            detail = L.t(.updateRestartHint, locale)
+        default:
+            return nil
+        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("\(L.t(.updateTo, locale))\(version)")
+                        .font(.ml(12.5, .bold))
+                        .foregroundStyle(palette.text)
+                    Spacer(minLength: 8)
+                    if case .downloading(_, .some) = updater.state, let fraction {
+                        Text("\(Int((fraction * 100).rounded()))%")
+                            .font(.mlMono(12))
+                            .foregroundStyle(palette.accentInk)
+                    }
+                }
+                QuotaBar(used: fraction, height: 6)
+                Text(detail)
+                    .font(.ml(12))
+                    .foregroundStyle(palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        )
     }
 
 }

@@ -7,6 +7,8 @@
 
 public enum Icon: String, CaseIterable, Sendable {
     case activity = "activity"
+    case arrowDown = "arrow-down"
+    case arrowUp = "arrow-up"
     case check = "check"
     case chevronLeft = "chevron-left"
     case chevronRight = "chevron-right"
@@ -20,12 +22,14 @@ public enum Icon: String, CaseIterable, Sendable {
     case link2 = "link-2"
     case loaderCircle = "loader-circle"
     case lock = "lock"
+    case logOut = "log-out"
     case messageCircle = "message-circle"
     case minus = "minus"
     case monitor = "monitor"
     case moon = "moon"
     case panelLeftClose = "panel-left-close"
     case panelLeftOpen = "panel-left-open"
+    case pin = "pin"
     case play = "play"
     case plus = "plus"
     case power = "power"
@@ -47,6 +51,8 @@ public enum Icon: String, CaseIterable, Sendable {
     public var paths: [String] {
         switch self {
         case .activity: return ["M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"]
+        case .arrowDown: return ["M12 5v14", "m19 12-7 7-7-7"]
+        case .arrowUp: return ["m5 12 7-7 7 7", "M12 19V5"]
         case .check: return ["M20 6 9 17l-5-5"]
         case .chevronLeft: return ["m15 18-6-6 6-6"]
         case .chevronRight: return ["m9 18 6-6-6-6"]
@@ -60,12 +66,14 @@ public enum Icon: String, CaseIterable, Sendable {
         case .link2: return ["M9 17H7A5 5 0 0 1 7 7h2", "M15 7h2a5 5 0 1 1 0 10h-2", "M8.0 12.0L16.0 12.0"]
         case .loaderCircle: return ["M21 12a9 9 0 1 1-6.219-8.56"]
         case .lock: return ["M5.0 11.0H19.0a2.0 2.0 0 0 1 2.0 2.0V20.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V13.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M7 11V7a5 5 0 0 1 10 0v4"]
+        case .logOut: return ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17L21 12L16 7", "M21.0 12.0L9.0 12.0"]
         case .messageCircle: return ["M7.9 20A9 9 0 1 0 4 16.1L2 22Z"]
         case .minus: return ["M5 12h14"]
         case .monitor: return ["M4.0 3.0H20.0a2.0 2.0 0 0 1 2.0 2.0V15.0a2.0 2.0 0 0 1 -2.0 2.0H4.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M8.0 21.0L16.0 21.0", "M12.0 17.0L12.0 21.0"]
         case .moon: return ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"]
         case .panelLeftClose: return ["M5.0 3.0H19.0a2.0 2.0 0 0 1 2.0 2.0V19.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M9 3v18", "m16 15-3-3 3-3"]
         case .panelLeftOpen: return ["M5.0 3.0H19.0a2.0 2.0 0 0 1 2.0 2.0V19.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M9 3v18", "m14 9 3 3-3 3"]
+        case .pin: return ["M12 17v5", "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"]
         case .play: return ["M6 3L20 12L6 21L6 3Z"]
         case .plus: return ["M5 12h14", "M12 5v14"]
         case .power: return ["M12 2v10", "M18.4 6.6a9 9 0 1 1-12.77.04"]

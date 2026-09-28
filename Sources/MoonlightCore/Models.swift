@@ -41,6 +41,10 @@ public struct Node: Identifiable, Hashable, Codable, Sendable {
     /// which reports only the bare type.
     public var protocolLabel: String?
 
+    /// What the service says the server is for — "Для онлайн игр 🎮" — from
+    /// the subscription's `serverDescription`.
+    public var serverDescription: String?
+
     /// True for a group that picks a node by latency on its own — `url-test` or
     /// `fallback`. That is the same job the app's own "Авто" row does, so when a
     /// panel offers one there is no reason to show both.
@@ -191,6 +195,19 @@ public enum ConnectionState: Equatable, Sendable {
 public enum TunnelMode: String, Codable, CaseIterable, Sendable {
     case systemProxy
     case tun
+}
+
+/// How the core routes what reaches it — mihomo's own `mode`.
+///
+/// Separate from ``TunnelMode``, which is how traffic *reaches* the core.
+public enum RoutingMode: String, Codable, CaseIterable, Sendable {
+    /// The subscription's rules decide, site by site.
+    case rule
+    /// Everything through the chosen server.
+    case global
+    /// Nothing through a server; the tunnel stays up but passes traffic
+    /// straight out.
+    case direct
 }
 
 /// Which traffic goes through the tunnel.

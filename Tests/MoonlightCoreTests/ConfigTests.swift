@@ -40,6 +40,30 @@ private func load(_ yaml: String) -> [String: Any] {
 }
 
 func configTests() {
+    Check.suite("MihomoConfig · routing mode") {
+        for mode in RoutingMode.allCases {
+            var override = overrides()
+            override.routingMode = mode
+            let root = load(try! MihomoConfig.build(panelYAML: panelYAML, overrides: override))
+            Check.equal(root["mode"] as? String, mode.rawValue,
+                        "\(mode) is the mode the core starts in, whatever the panel wrote")
+        }
+    }
+
+    Check.suite("MihomoConfig · server descriptions") {
+        let described = """
+        proxies:
+          - {name: "🇸🇪 Sweden", type: ss, server: 1.2.3.4, port: 443, cipher: aes-256-gcm, password: pw, serverDescription: "Для онлайн игр 🎮"}
+          - {name: "🇫🇮 Helsinki", type: ss, server: 1.2.3.5, port: 443, cipher: aes-256-gcm, password: pw}
+          - {name: "🇺🇸 United States", type: ss, server: 1.2.3.6, port: 443, cipher: aes-256-gcm, password: pw, serverDescription: "  "}
+        """
+        Check.equal(MihomoConfig.serverDescriptions(panelYAML: described),
+                    ["🇸🇪 Sweden": "Для онлайн игр 🎮"],
+                    "each described server, by name; blank ones are left out")
+        Check.equal(MihomoConfig.serverDescriptions(panelYAML: panelYAML), [:],
+                    "a panel that sends none gives none")
+    }
+
     Check.suite("MihomoConfig · client-owned settings") {
         let built = try! MihomoConfig.build(panelYAML: panelYAML, overrides: overrides())
         let root = load(built)

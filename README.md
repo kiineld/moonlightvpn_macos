@@ -191,12 +191,26 @@ The app is not notarised and there is no App Store, so **Settings → Прове
 обновления** does what a user would otherwise do by hand: ask GitHub for the
 latest release, download the universal DMG, and swap the bundle.
 
+The download reports as it goes — "12,3 МБ из 36,6 МБ" beside the spinner,
+with a bar, the version, and a line saying what the wait ends in — and the
+image is checked against the `.sha256` the release attaches before anything is
+touched. A damaged download fails there, with the working app still in place.
+
 The swap runs in a **detached shell script**, not in-process. An app cannot
 replace its own bundle while running, and a process that deletes its own
 executable behaves unpredictably from that moment on. The script waits for the
 app to exit, mounts the image, `ditto`s the new bundle over the old one —
 restoring the old one if the copy fails, rather than leaving no app at all — and
-relaunches.
+relaunches. An app still there after 30 seconds is stopped first: swapping the
+bundle under a live app left it running the old version, and the relaunch then
+only brought that old window forward.
+
+The app is asked to quit with `AppExit.quit()`, never `NSApp.terminate` from a
+`Task`. It answers "terminate later" while it brings the tunnel down, and AppKit
+waits for that answer in a nested run loop *inside the block that asked* — so a
+main-queue block that calls `terminate` deadlocks the main queue: the teardown
+never runs, nor its fallback timer, and the app sits in "quitting" until it is
+force-quit. Scheduling the call on the run loop avoids it.
 
 Versions compare numerically, so 1.0.10 beats 1.0.9; a string comparison gets
 that backwards.
@@ -430,13 +444,23 @@ icon buttons over the server list, the list they act on; the theme switch lives
 in Settings. What is left of the plan sits in the sidebar, the one place it is
 shown.
 
+The routing mode is mihomo's own `mode`, patched into the running core and
+written into every config it is built with; existing connections are closed
+so they reopen under it. Global points mihomo's `GLOBAL` group at the app's
+selector, so the chosen server is still the one used. Server descriptions come
+from the subscription's `serverDescription`, which the service includes in some
+responses and not others — the last ones seen are kept.
+
 The server list works as on the phone: a pill naming the server in use, which
 opens into the full list beneath it. The list is always in the hierarchy and
 only its height moves — from nothing to its measured content, capped to the
 window and scrolling past that — on a spring, so opening is one continuous
-motion. Picking a server closes it. Closed, the button and the pill sit in the
-middle of the page; opening the list lifts them to the top on the same spring,
-and the list takes the room that frees. A latency reads `–` until the server has
+motion. Picking a server closes it. Closed, the power button is drawn at one
+and a half times its size with its centre on the page's centre; opening the
+list shrinks it and lifts the column to the top on the same spring, and the
+list takes the room that frees. The offset is worked out from the parts above
+and below the button, which the drawer does not change, so the whole move is
+one animation rather than a jump once the page is re-measured. A latency reads `–` until the server has
 been probed, and `n/a` only once a probe got no answer within 5000 ms; timeouts
 are remembered across launches like the numbers are.
 
@@ -515,9 +539,13 @@ otherwise use:
 | `onContinuousHover` | the pointer is pushed on hover and popped on exit |
 | `ViewThatFits` | a scroll view always — the server list fills its card |
 
-The status item is arguably the better arrangement anyway: its menu is rebuilt
-each time it opens, so the traffic figures and node list are correct at the
-moment they are read rather than whenever SwiftUI last re-rendered them.
+The status item opens a tray — an `NSPopover` hosting SwiftUI — with the
+service's message, the state and live speeds, the routing mode (rules, global,
+direct), a searchable server list with each server's transport, the service's
+description of it and a ping button, a floating connect button, and a way into
+the window. Pinned, it stays open when the user clicks elsewhere. The popover's
+window is made key without activating the app, so the search field takes typing
+without the main window coming up behind it.
 
 `otool -l` on a release binary reports `minos 12.0`, not just the plist.
 

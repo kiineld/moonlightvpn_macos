@@ -216,6 +216,26 @@ func updaterTests() {
         Check.isTrue(!Updater.isNewer("1.0", than: "1.0.0"), "trailing zeros are equal")
     }
 
+    Check.suite("Updater · release checksum") {
+        let hash = String(repeating: "ab", count: 32)
+        // `shasum -a 256` output, which is what the release attaches.
+        Check.equal(Updater.checksum(fromSHA256File: "\(hash)  Moonlight-universal.dmg\n"), hash,
+                    "the hash is the first field of shasum's line")
+        Check.equal(Updater.checksum(fromSHA256File: hash.uppercased()), hash,
+                    "a bare upper-case hash is read too")
+        Check.isNil(Updater.checksum(fromSHA256File: "Not Found"), "anything that is not a hash is refused")
+        Check.isNil(Updater.checksum(fromSHA256File: ""), "and so is nothing")
+    }
+
+    Check.suite("Format · download progress") {
+        Check.equal(Format.transfer(12_897_485, of: 38_405_734, locale: .ru), "12,3\u{00A0}МБ из 36,6\u{00A0}МБ",
+                    "received and total, in the design's units")
+        Check.equal(Format.transfer(12_897_485, of: 38_405_734, locale: .en), "12.3\u{00A0}MB of 36.6\u{00A0}MB",
+                    "and in English")
+        Check.equal(Format.transfer(12_897_485, of: nil, locale: .ru), "12,3\u{00A0}МБ",
+                    "with no size from the server, just what has arrived")
+    }
+
     Check.suite("LogEntry · core levels") {
         // mihomo writes `warning`; its own docs and most UIs say `warn`.
         Check.equal(LogEntry.Level(core: "warn"), .warning, "warn maps to warning")

@@ -33,6 +33,8 @@ NAMES = {
     "circle-alert": "circleAlert", "loader-circle": "loaderCircle",
     "download": "download", "play": "play",
     "panel-left-close": "panelLeftClose", "panel-left-open": "panelLeftOpen",
+    "pin": "pin", "arrow-down": "arrowDown", "arrow-up": "arrowUp",
+    "log-out": "logOut",
 }
 
 

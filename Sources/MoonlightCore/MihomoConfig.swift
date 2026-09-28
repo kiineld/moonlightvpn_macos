@@ -21,6 +21,8 @@ public struct MihomoConfig {
         public var secret: String
         public var mixedPort: Int
         public var mode: TunnelMode
+        /// The core's `mode`: rules, everything through the server, or nothing.
+        public var routingMode: RoutingMode
         public var splitMode: SplitMode
         /// Every rule the split screen contributes — the app toggles and the
         /// hand-written ones alike.
@@ -34,6 +36,7 @@ public struct MihomoConfig {
             secret: String,
             mixedPort: Int = 7897,
             mode: TunnelMode = .systemProxy,
+            routingMode: RoutingMode = .rule,
             splitMode: SplitMode = .all,
             splitRules: [SplitRule] = [],
             logLevel: String = "warning",
@@ -43,6 +46,7 @@ public struct MihomoConfig {
             self.secret = secret
             self.mixedPort = mixedPort
             self.mode = mode
+            self.routingMode = routingMode
             self.splitMode = splitMode
             self.splitRules = splitRules
             self.logLevel = logLevel
@@ -78,7 +82,9 @@ public struct MihomoConfig {
         root["external-controller"] = "127.0.0.1:\(overrides.controllerPort)"
         root["secret"] = overrides.secret
         root["log-level"] = overrides.logLevel
-        root["mode"] = "rule"
+        // The user's choice, never the panel's: a panel's `global` would
+        // ignore its own routing rules without anyone having asked for that.
+        root["mode"] = overrides.routingMode.rawValue
         root["allow-lan"] = false
         root["bind-address"] = "127.0.0.1"
         // Ports the panel may have set are removed rather than left listening:
@@ -127,6 +133,21 @@ public struct MihomoConfig {
         }
 
         return try Yams.dump(object: root, sortKeys: true)
+    }
+
+    /// Each server's `serverDescription`, by name. Blank ones are left out.
+    public static func serverDescriptions(panelYAML: String) -> [String: String] {
+        guard let root = try? Yams.load(yaml: panelYAML) as? [String: Any],
+              let proxies = root["proxies"] as? [[String: Any]] else { return [:] }
+        var descriptions: [String: String] = [:]
+        for proxy in proxies {
+            guard let name = proxy["name"] as? String,
+                  let text = (proxy["serverDescription"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { continue }
+            descriptions[name] = text
+        }
+        return descriptions
     }
 
     /// A minimal config that carries just a proxy list — the shape the

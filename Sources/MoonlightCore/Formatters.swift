@@ -26,6 +26,13 @@ public enum Format {
         return "\(decimal(amount, digits: digits, locale: locale))\u{00A0}\(units[index])"
     }
 
+    /// How much of a download has arrived: "12,3 МБ из 36,6 МБ", or only what
+    /// has arrived when the server did not say how big it is.
+    public static func transfer(_ received: Int64, of total: Int64?, locale: AppLocale = .ru) -> String {
+        guard let total else { return bytes(received, locale: locale) }
+        return "\(bytes(received, locale: locale)) \(locale == .ru ? "из" : "of") \(bytes(total, locale: locale))"
+    }
+
     /// A transfer rate. The design's connect screen updates this every second,
     /// so it stays on one line at any magnitude.
     public static func rate(_ bytesPerSecond: Int64?, locale: AppLocale = .ru) -> String {

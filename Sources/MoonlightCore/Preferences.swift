@@ -25,6 +25,8 @@ public final class Preferences: @unchecked Sendable {
         static let theme = "theme"
         static let locale = "locale"
         static let tunnelMode = "tunnelMode"
+        static let routingMode = "routingMode"
+        static let serverDescriptions = "serverDescriptions"
         static let splitMode = "splitMode"
         static let splitRules = "splitRules"
         static let launchAtLogin = "launchAtLogin"
@@ -98,6 +100,19 @@ public final class Preferences: @unchecked Sendable {
     public var tunnelMode: TunnelMode {
         get { TunnelMode(rawValue: defaults.string(forKey: Key.tunnelMode) ?? "") ?? .systemProxy }
         set { defaults.set(newValue.rawValue, forKey: Key.tunnelMode) }
+    }
+
+    public var routingMode: RoutingMode {
+        get { RoutingMode(rawValue: defaults.string(forKey: Key.routingMode) ?? "") ?? .rule }
+        set { defaults.set(newValue.rawValue, forKey: Key.routingMode) }
+    }
+
+    /// The last server descriptions the subscription carried, by node name.
+    /// The service includes them in some responses and not in others, so a
+    /// refresh that comes back without them keeps these.
+    public var serverDescriptions: [String: String] {
+        get { defaults.dictionary(forKey: Key.serverDescriptions) as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: Key.serverDescriptions) }
     }
 
     public var splitMode: SplitMode {

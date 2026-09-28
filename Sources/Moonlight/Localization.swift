@@ -82,6 +82,11 @@ public enum L {
         // Updates
         case updateChecking, updateUpToDate, updateAvailable, updateDownloading
         case updateInstalling, updateInstall, updateFailed
+        case updateVerifying, updateVerifyingHint, updateRestartHint, updateTo, updateDownloadHint
+        // Menu bar tray
+        case routingRule, routingGlobal, routingDirect, pingAll, pingOne, searchServers
+        case openWindow, connectAction, disconnectAction, keepOpen, stopKeepingOpen
+        case nothingFound
         // Subscription service extras
         case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
         case trafficResets, removeSubscriptionSub, hideAnnounce
@@ -264,9 +269,26 @@ public enum L {
             case .updateUpToDate: return "Установлена последняя версия"
             case .updateAvailable: return "Доступна версия"
             case .updateDownloading: return "Загрузка"
-            case .updateInstalling: return "Установка и перезапуск…"
+            case .updateInstalling: return "Перезапуск…"
             case .updateInstall: return "Обновить"
             case .updateFailed: return "Не удалось обновить"
+            case .updateVerifying: return "Проверка…"
+            case .updateVerifyingHint: return "Сверяем загрузку с контрольной суммой"
+            case .updateRestartHint: return "Moonlight закроется и откроется уже новой версией"
+            case .updateTo: return "Обновление до"
+            case .updateDownloadHint: return "Затем проверим файл, и Moonlight перезапустится уже новой версией"
+            case .routingRule: return "По правилам"
+            case .routingGlobal: return "Глобальный"
+            case .routingDirect: return "Напрямую"
+            case .pingAll: return "Пинг всех"
+            case .pingOne: return "Проверить пинг"
+            case .searchServers: return "Поиск серверов"
+            case .openWindow: return "Открыть"
+            case .connectAction: return "Подключиться"
+            case .disconnectAction: return "Отключиться"
+            case .keepOpen: return "Не закрывать"
+            case .stopKeepingOpen: return "Закрывать при клике мимо"
+            case .nothingFound: return "Ничего не найдено"
             case .autoUpdate: return "Автообновление подписки"
             case .autoUpdateSub: return "Как часто проверять серверы, дни и трафик"
             case .autoUpdateOff: return "Выкл"
@@ -474,9 +496,26 @@ public enum L {
             case .updateUpToDate: return "You are on the latest version"
             case .updateAvailable: return "Version available"
             case .updateDownloading: return "Downloading"
-            case .updateInstalling: return "Installing and restarting…"
+            case .updateInstalling: return "Restarting…"
             case .updateInstall: return "Update"
             case .updateFailed: return "Update failed"
+            case .updateVerifying: return "Verifying…"
+            case .updateVerifyingHint: return "Checking the download against its checksum"
+            case .updateRestartHint: return "Moonlight will close and reopen as the new version"
+            case .updateTo: return "Updating to"
+            case .updateDownloadHint: return "Then the file is checked and Moonlight restarts as the new version"
+            case .routingRule: return "Rules"
+            case .routingGlobal: return "Global"
+            case .routingDirect: return "Direct"
+            case .pingAll: return "Ping all"
+            case .pingOne: return "Check ping"
+            case .searchServers: return "Search servers"
+            case .openWindow: return "Open"
+            case .connectAction: return "Connect"
+            case .disconnectAction: return "Disconnect"
+            case .keepOpen: return "Keep open"
+            case .stopKeepingOpen: return "Close when clicking away"
+            case .nothingFound: return "Nothing found"
             case .autoUpdate: return "Update the subscription automatically"
             case .autoUpdateSub: return "How often to check servers, days and traffic"
             case .autoUpdateOff: return "Off"
