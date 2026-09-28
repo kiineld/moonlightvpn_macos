@@ -57,6 +57,10 @@ public final class MihomoProcess: @unchecked Sendable {
     }
 
     /// The release number of the core at `binary`, asked of the binary itself.
+    ///
+    /// Launches it and waits, which spins the calling thread's run loop — so
+    /// never from the main thread, and never from a view (see
+    /// ``TunnelController/refreshHelperStatus()``).
     public static func version(of binary: URL) -> String? {
         guard FileManager.default.isExecutableFile(atPath: binary.path) else { return nil }
         let process = Process()

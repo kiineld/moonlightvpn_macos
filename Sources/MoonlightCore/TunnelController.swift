@@ -55,10 +55,6 @@ public final class TunnelController: ObservableObject {
     private let helperBinary: URL
     /// The helper core's version as last read, so the check costs a process
     /// launch once rather than on every connect.
-    private var installedCoreVersion: String??
-    /// Whether the installed helper program is this build's, as last compared.
-    private var installedHelperMatches: Bool?
-    private lazy var bundledCoreVersion: String? = MihomoProcess.version(of: coreBinary)
     private var configURL: URL { core.configURL }
     private var panelURL: URL { support.appendingPathComponent("subscription.yaml") }
 
@@ -128,6 +124,7 @@ public final class TunnelController: ObservableObject {
         // Warm the core as soon as there is a subscription, so the first latency
         // pass is instant rather than paying for a cold start.
         Task { await ensureCoreRunning() }
+        Task { await refreshHelperStatus() }
     }
 
     /// The panel's own auto-picker, if its selector offers one.
@@ -159,28 +156,38 @@ public final class TunnelController: ObservableObject {
     public var helperInstalled: Bool { HelperInstaller.isInstalled && helper.isInstalled }
 
     /// Whether the installed helper is this build's — its program and the core
-    /// it runs.
+    /// it runs. See ``refreshHelperStatus()``, which is what sets it.
     ///
     /// The helper and its root-owned copy of the core are made when it is
     /// installed, and nothing updated them afterwards. An app update that
     /// needed a newer core (the service's XHTTP servers need 1.19.30 or later)
     /// left TUN on the old one; one that fixed the helper itself (it ignored
     /// SIGTERM until 1.6.4) never reached anyone who had it installed.
-    public var helperIsCurrent: Bool {
-        guard helperInstalled else { return true }
-        if installedCoreVersion == nil {
-            installedCoreVersion = .some(MihomoProcess.version(of: HelperInstaller.installedCore))
+    @Published public private(set) var helperIsCurrent = true
+
+    /// Compares the installed helper with this build's, off the main thread.
+    ///
+    /// Stored and refreshed rather than computed where it is read: reading the
+    /// core's version means launching it and waiting, and `waitUntilExit`
+    /// spins the calling thread's run loop. Asked from inside the Settings
+    /// view, that ran a layout pass in the middle of the one being drawn, and
+    /// SwiftUI aborted — opening Settings crashed the app.
+    public func refreshHelperStatus() async {
+        guard helperInstalled else {
+            helperIsCurrent = true
+            return
         }
-        if installedHelperMatches == nil {
+        let helperBinary = helperBinary, coreBinary = coreBinary
+        helperIsCurrent = await Task.detached(priority: .utility) {
+            let bundledCore = MihomoProcess.version(of: coreBinary)
+            let installedCore = MihomoProcess.version(of: HelperInstaller.installedCore)
             // A build run outside an app bundle has no helper of its own to
             // compare, and should not keep asking to install one.
-            let bundled = helperBinary.path
-            installedHelperMatches = !FileManager.default.fileExists(atPath: bundled)
-                || FileManager.default.contentsEqual(atPath: bundled,
+            let helperMatches = !FileManager.default.fileExists(atPath: helperBinary.path)
+                || FileManager.default.contentsEqual(atPath: helperBinary.path,
                                                      andPath: HelperInstaller.installedHelper.path)
-        }
-        let coreCurrent = bundledCoreVersion.map { installedCoreVersion == .some($0) } ?? true
-        return coreCurrent && installedHelperMatches != false
+            return helperMatches && (bundledCore == nil || bundledCore == installedCore)
+        }.value
     }
 
     /// Replaces the helper's copy of the core with this build's — the one admin
@@ -191,13 +198,12 @@ public final class TunnelController: ObservableObject {
         try await Task.detached(priority: .userInitiated) {
             try HelperInstaller.install(helper: helperBinary, core: coreBinary)
         }.value
-        installedCoreVersion = nil
-        installedHelperMatches = nil
         // launchd takes a moment to bring the daemon back and open its socket.
         for _ in 0..<30 {
-            if (try? helper.version()) != nil { return }
+            if (try? helper.version()) != nil { break }
             try await Task.sleep(nanoseconds: 150_000_000)
         }
+        await refreshHelperStatus()
     }
 
     /// The core's own log tail, for the settings screen's diagnostics.
@@ -405,6 +411,7 @@ public final class TunnelController: ObservableObject {
                 SystemProxy.enable(port: preferences.mixedPort)
 
             case .tun:
+                await refreshHelperStatus()
                 if !helperIsCurrent { try await updateHelper() }
                 // TUN needs the core to run as root, so the idle one has to go.
                 core.stop()

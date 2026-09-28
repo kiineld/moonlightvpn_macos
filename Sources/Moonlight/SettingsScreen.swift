@@ -23,6 +23,9 @@ struct SettingsScreen: View {
                 columns.padding(.bottom, 8).rise(0, page)
             }
             .mlScrollIndicators(hidden: true)
+            // The helper may have been replaced or removed since this screen
+            // last looked; checked off the main thread, never while drawing.
+            .task { await tunnel.refreshHelperStatus() }
             // The update card is the last thing on the page, and its progress
             // opens beneath it — below the window's edge on a short window.
             .onChange(of: updater.state.isUnderWay) { underWay in
@@ -160,6 +163,7 @@ struct SettingsScreen: View {
         if tunnel.tunnelMode == .tun { await tunnel.setTunnelMode(.systemProxy) }
         do {
             try HelperInstaller.uninstall()
+            await tunnel.refreshHelperStatus()
             settings.bumpHelperState()
         } catch HelperInstaller.Failure.cancelled {
         } catch {
