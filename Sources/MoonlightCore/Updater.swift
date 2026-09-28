@@ -195,15 +195,18 @@ public final class Updater: ObservableObject {
         trap 'hdiutil detach "$mount" -force >/dev/null 2>&1' EXIT
         [ -d "$mount/Moonlight.app" ] || fail
 
-        rm -rf '\(bundle.path).old'
-        mv '\(bundle.path)' '\(bundle.path).old' || fail
+        # The old copy waits in a private temporary folder, not beside the
+        # new one: parked as Moonlight.app.old in /Applications, Spotlight
+        # indexed it mid-swap and the Apps view showed two Moonlights.
+        parked=$(mktemp -d)
+        mv '\(bundle.path)' "$parked/Moonlight.app" || fail
         if ! ditto "$mount/Moonlight.app" '\(bundle.path)'; then
           # Put the old one back rather than leaving the user with no app.
           rm -rf '\(bundle.path)'
-          mv '\(bundle.path).old' '\(bundle.path)'
+          mv "$parked/Moonlight.app" '\(bundle.path)'
           fail
         fi
-        rm -rf '\(bundle.path).old'
+        rm -rf "$parked"
         xattr -dr com.apple.quarantine '\(bundle.path)' 2>/dev/null || true
         open '\(bundle.path)'
         rm -f '\(image.path)' "$0"
