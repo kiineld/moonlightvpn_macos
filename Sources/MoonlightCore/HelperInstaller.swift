@@ -32,6 +32,8 @@ public enum HelperInstaller {
 
     /// The helper's root-owned copy of the core, which TUN mode runs.
     public static var installedCore: URL { URL(fileURLWithPath: "\(installRoot)/mihomo") }
+    /// The installed helper program itself.
+    public static var installedHelper: URL { URL(fileURLWithPath: "\(installRoot)/moonlight-helper") }
 
     public static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlist)
@@ -51,11 +53,28 @@ public enum HelperInstaller {
             throw Failure.missingResource("mihomo")
         }
 
-        let script = """
+        try runAsAdministrator(installScript(helper: helper, core: core))
+    }
+
+    /// The install as a script — the old helper unloaded and gone first, then
+    /// the files replaced, then the new one loaded.
+    ///
+    /// The order matters twice over. `launchctl bootout` returns before launchd
+    /// has finished removing the service, and a `bootstrap` in that window
+    /// fails with "Bootstrap failed: 5: Input/output error"; so this waits
+    /// until the service is really gone, and retries the load. And the files
+    /// are replaced by rename, never by writing into them: copying over the
+    /// binary of a helper or core that is still running rewrites pages it is
+    /// executing.
+    public static func installScript(helper: URL, core: URL) -> String {
+        """
         set -e
+        \(unloadAndWait)
         mkdir -p '\(installRoot)'
-        cp -f '\(helper.path)' '\(installRoot)/moonlight-helper'
-        cp -f '\(core.path)' '\(installRoot)/mihomo'
+        cp -f '\(helper.path)' '\(installRoot)/moonlight-helper.new'
+        cp -f '\(core.path)' '\(installRoot)/mihomo.new'
+        mv -f '\(installRoot)/moonlight-helper.new' '\(installRoot)/moonlight-helper'
+        mv -f '\(installRoot)/mihomo.new' '\(installRoot)/mihomo'
         chown -R root:wheel '\(installRoot)'
         chmod 755 '\(installRoot)' '\(installRoot)/moonlight-helper' '\(installRoot)/mihomo'
         cat > '\(daemonPlist)' <<'PLIST'
@@ -63,20 +82,39 @@ public enum HelperInstaller {
         PLIST
         chown root:wheel '\(daemonPlist)'
         chmod 644 '\(daemonPlist)'
-        launchctl bootout system/\(HelperClient.label) 2>/dev/null || true
-        launchctl bootstrap system '\(daemonPlist)'
+        for attempt in 1 2 3 4 5; do
+          launchctl bootstrap system '\(daemonPlist)' && break
+          [ "$attempt" = 5 ] && exit 1
+          sleep 1
+        done
         """
-        try runAsAdministrator(script)
+    }
+
+    /// Unloads the helper and waits — up to fifteen seconds — until launchd no
+    /// longer knows the service, which is when a new one can be loaded.
+    private static var unloadAndWait: String {
+        """
+        launchctl bootout system/\(HelperClient.label) 2>/dev/null || true
+        for _ in $(seq 1 150); do
+          launchctl print system/\(HelperClient.label) >/dev/null 2>&1 || break
+          sleep 0.1
+        done
+        """
     }
 
     public static func uninstall() throws {
-        let script = """
-        launchctl bootout system/\(HelperClient.label) 2>/dev/null || true
+        try runAsAdministrator(uninstallScript)
+    }
+
+    /// Removal as a script: unloaded and gone before the files go, so an
+    /// install straight after it finds nothing half-removed.
+    public static var uninstallScript: String {
+        """
+        \(unloadAndWait)
         rm -f '\(daemonPlist)'
         rm -rf '\(installRoot)'
         rm -f '\(HelperClient.socketPath)'
         """
-        try runAsAdministrator(script)
     }
 
     private static var plist: String {

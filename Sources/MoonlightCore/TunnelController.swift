@@ -56,6 +56,8 @@ public final class TunnelController: ObservableObject {
     /// The helper core's version as last read, so the check costs a process
     /// launch once rather than on every connect.
     private var installedCoreVersion: String??
+    /// Whether the installed helper program is this build's, as last compared.
+    private var installedHelperMatches: Bool?
     private lazy var bundledCoreVersion: String? = MihomoProcess.version(of: coreBinary)
     private var configURL: URL { core.configURL }
     private var panelURL: URL { support.appendingPathComponent("subscription.yaml") }
@@ -156,19 +158,29 @@ public final class TunnelController: ObservableObject {
     public var tunnelMode: TunnelMode { preferences.tunnelMode }
     public var helperInstalled: Bool { HelperInstaller.isInstalled && helper.isInstalled }
 
-    /// Whether TUN mode would run the core this build ships.
+    /// Whether the installed helper is this build's — its program and the core
+    /// it runs.
     ///
-    /// The helper runs a root-owned copy made when it was installed, and
-    /// nothing updated that copy afterwards — so an app update that needed a
-    /// newer core (the service's XHTTP servers need 1.19.30 or later) left TUN
-    /// on the old one, and those servers kept failing in TUN alone.
-    public var helperCoreIsCurrent: Bool {
+    /// The helper and its root-owned copy of the core are made when it is
+    /// installed, and nothing updated them afterwards. An app update that
+    /// needed a newer core (the service's XHTTP servers need 1.19.30 or later)
+    /// left TUN on the old one; one that fixed the helper itself (it ignored
+    /// SIGTERM until 1.6.4) never reached anyone who had it installed.
+    public var helperIsCurrent: Bool {
         guard helperInstalled else { return true }
         if installedCoreVersion == nil {
             installedCoreVersion = .some(MihomoProcess.version(of: HelperInstaller.installedCore))
         }
-        guard let bundled = bundledCoreVersion else { return true }
-        return installedCoreVersion == .some(bundled)
+        if installedHelperMatches == nil {
+            // A build run outside an app bundle has no helper of its own to
+            // compare, and should not keep asking to install one.
+            let bundled = helperBinary.path
+            installedHelperMatches = !FileManager.default.fileExists(atPath: bundled)
+                || FileManager.default.contentsEqual(atPath: bundled,
+                                                     andPath: HelperInstaller.installedHelper.path)
+        }
+        let coreCurrent = bundledCoreVersion.map { installedCoreVersion == .some($0) } ?? true
+        return coreCurrent && installedHelperMatches != false
     }
 
     /// Replaces the helper's copy of the core with this build's — the one admin
@@ -180,6 +192,7 @@ public final class TunnelController: ObservableObject {
             try HelperInstaller.install(helper: helperBinary, core: coreBinary)
         }.value
         installedCoreVersion = nil
+        installedHelperMatches = nil
         // launchd takes a moment to bring the daemon back and open its socket.
         for _ in 0..<30 {
             if (try? helper.version()) != nil { return }
@@ -392,7 +405,7 @@ public final class TunnelController: ObservableObject {
                 SystemProxy.enable(port: preferences.mixedPort)
 
             case .tun:
-                if !helperCoreIsCurrent { try await updateHelper() }
+                if !helperIsCurrent { try await updateHelper() }
                 // TUN needs the core to run as root, so the idle one has to go.
                 core.stop()
                 let yaml = try MihomoConfig.build(

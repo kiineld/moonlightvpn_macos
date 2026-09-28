@@ -211,15 +211,24 @@ func serve(_ client: Int32) {
 
 // Dying must not strand the interface: launchd sends SIGTERM on shutdown and on
 // `launchctl bootout`, and the core has to come down with us.
-for signalNumber in [SIGTERM, SIGINT] {
+//
+// The handlers run on their own queue. They used to be on the main queue — but
+// the main thread never returns from the `accept` loop below, so the main queue
+// never ran, SIGTERM was ignored, and launchd SIGKILLed the helper five seconds
+// later: the core it supervised was orphaned with the tunnel's interface and
+// routes, and a reinstall in those five seconds failed with "Bootstrap failed:
+// 5". The sources are kept in a global, since a released source stops firing.
+let signalQueue = DispatchQueue(label: "vpn.moonlight.helper.signals")
+let signalSources: [DispatchSourceSignal] = [SIGTERM, SIGINT].map { signalNumber in
     signal(signalNumber, SIG_IGN)
-    let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
+    let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
     source.setEventHandler {
         supervisor.stop()
         unlink(socketPath)
         exit(0)
     }
     source.resume()
+    return source
 }
 signal(SIGPIPE, SIG_IGN)
 

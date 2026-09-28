@@ -86,7 +86,7 @@ public enum L {
         // Menu bar tray
         case routingRule, routingGlobal, routingDirect, pingAll, pingOne, searchServers
         case openWindow, connectAction, disconnectAction, keepOpen, stopKeepingOpen
-        case nothingFound, helperStale, helperStaleSub
+        case nothingFound, helperStale, helperStaleSub, helperInstallFailed, helperRemoveFailed
         // Subscription service extras
         case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
         case trafficResets, removeSubscriptionSub, hideAnnounce
@@ -290,7 +290,9 @@ public enum L {
             case .stopKeepingOpen: return "Закрывать при клике мимо"
             case .nothingFound: return "Ничего не найдено"
             case .helperStale: return "Помощник нужно обновить"
-            case .helperStaleSub: return "В нём старое ядро — без обновления часть серверов не работает в TUN"
+            case .helperStaleSub: return "Он из прошлой версии Moonlight — обновите, чтобы TUN работал как надо"
+            case .helperInstallFailed: return "Не удалось установить помощник. Попробуйте ещё раз — подробности в логах"
+            case .helperRemoveFailed: return "Не удалось удалить помощник. Попробуйте ещё раз — подробности в логах"
             case .autoUpdate: return "Автообновление подписки"
             case .autoUpdateSub: return "Как часто проверять серверы, дни и трафик"
             case .autoUpdateOff: return "Выкл"
@@ -519,7 +521,9 @@ public enum L {
             case .stopKeepingOpen: return "Close when clicking away"
             case .nothingFound: return "Nothing found"
             case .helperStale: return "The helper needs an update"
-            case .helperStaleSub: return "It carries an older core, and some servers fail in TUN until it is updated"
+            case .helperStaleSub: return "It is from an earlier Moonlight — update it so TUN works as it should"
+            case .helperInstallFailed: return "The helper could not be installed. Try again — the log has the details"
+            case .helperRemoveFailed: return "The helper could not be removed. Try again — the log has the details"
             case .autoUpdate: return "Update the subscription automatically"
             case .autoUpdateSub: return "How often to check servers, days and traffic"
             case .autoUpdateOff: return "Off"

@@ -91,7 +91,7 @@ struct SettingsScreen: View {
 
     private var helperRow: some View {
         // Read once per render rather than per use: it can launch the core.
-        let stale = tunnel.helperInstalled && !tunnel.helperCoreIsCurrent
+        let stale = tunnel.helperInstalled && !tunnel.helperIsCurrent
         return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(stale ? L.t(.helperStale, locale)
@@ -147,7 +147,10 @@ struct SettingsScreen: View {
         } catch HelperInstaller.Failure.cancelled {
             helperError = nil
         } catch {
-            helperError = error.localizedDescription
+            // What went wrong in words; osascript's own text — "0:181:
+            // execution error: Bootstrap failed: 5" — goes to the log.
+            helperError = L.t(.helperInstallFailed, locale)
+            LogStore.shared.client("Helper install failed: \(error.localizedDescription)", level: .error)
         }
     }
 
@@ -160,7 +163,8 @@ struct SettingsScreen: View {
             settings.bumpHelperState()
         } catch HelperInstaller.Failure.cancelled {
         } catch {
-            helperError = error.localizedDescription
+            helperError = L.t(.helperRemoveFailed, locale)
+            LogStore.shared.client("Helper removal failed: \(error.localizedDescription)", level: .error)
         }
     }
 

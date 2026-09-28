@@ -216,6 +216,39 @@ func updaterTests() {
         Check.isTrue(!Updater.isNewer("1.0", than: "1.0.0"), "trailing zeros are equal")
     }
 
+    Check.suite("HelperInstaller · scripts") {
+        let install = HelperInstaller.installScript(
+            helper: URL(fileURLWithPath: "/tmp/moonlight-helper"),
+            core: URL(fileURLWithPath: "/tmp/mihomo")
+        )
+        // They run as root through osascript and cannot run here — but they can
+        // at least be proved to parse.
+        for (name, script) in [("install", install), ("uninstall", HelperInstaller.uninstallScript)] {
+            let file = FileManager.default.temporaryDirectory
+                .appendingPathComponent("moonlight-\(name)-\(UUID().uuidString).sh")
+            try script.write(to: file, atomically: true, encoding: .utf8)
+            defer { try? FileManager.default.removeItem(at: file) }
+            let shell = Process()
+            shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+            shell.arguments = ["-n", file.path]
+            try shell.run()
+            shell.waitUntilExit()
+            Check.equal(shell.terminationStatus, 0, "the \(name) script is valid shell")
+        }
+        // The old helper must be gone before its files are replaced or a new one
+        // loaded: a bootstrap while launchd was still removing it failed with
+        // "Bootstrap failed: 5".
+        func position(_ text: String) -> Int {
+            install.range(of: text).map { install.distance(from: install.startIndex, to: $0.lowerBound) } ?? -1
+        }
+        Check.isTrue(position("launchctl print") >= 0 && position("launchctl print") < position("cp -f"),
+                     "install waits for the old helper to be gone before copying")
+        Check.isTrue(!install.contains("cp -f '/tmp/mihomo' '/Library/Application Support/Moonlight/mihomo'"),
+                     "the core is replaced by rename, never written into in place")
+        Check.isTrue(position("launchctl bootstrap") > position("mv -f"),
+                     "and loaded only once its files are in place")
+    }
+
     Check.suite("MihomoProcess · core version") {
         Check.equal(MihomoProcess.version(fromOutput: "Mihomo Meta v1.19.31 darwin arm64 with go1.26.8 Mon Sep 14 13:24:49 UTC 2026\nUse tags: with_gvisor\n"),
                     "1.19.31", "the version from `mihomo -v`")
