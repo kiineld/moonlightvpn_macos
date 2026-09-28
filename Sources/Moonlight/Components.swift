@@ -225,9 +225,14 @@ struct IconTile: View {
     var fill: Color
     var size: CGFloat = 40
     var glyph: CGFloat = 17
+    /// Turns the glyph while something is in flight. The glyph alone: turning
+    /// the whole tile turned its glass with it, and rotated glass draws as a
+    /// skewed slab swinging out past the row.
+    var spinning = false
 
     var body: some View {
         IconView(icon, size: glyph)
+            .inFlight(.spin, spinning)
             .foregroundStyle(palette.text)
             .frame(width: size, height: size)
             .mlGlass(.rounded(Radii.tile), fallback: fill)
@@ -419,8 +424,7 @@ struct ActionRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                IconTile(icon: icon, fill: fill)
-                    .inFlight(.spin, spinning)
+                IconTile(icon: icon, fill: fill, spinning: spinning)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.ml(15, .heavy))

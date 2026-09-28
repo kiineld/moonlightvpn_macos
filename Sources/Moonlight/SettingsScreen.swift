@@ -137,13 +137,12 @@ struct SettingsScreen: View {
         helperError = nil
         defer { helperBusy = false }
         do {
-            try HelperInstaller.install(
-                helper: Bundle.main.helperBinaryURL,
-                core: Bundle.main.coreBinaryURL
-            )
-            // launchd takes a moment to bring the daemon up and create its
-            // socket; reporting failure before that is a false negative.
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            // Through the controller, which knows what core the helper had:
+            // installed around it, that stayed cached, and a successful update
+            // went on saying "needs an update". It also waits for the daemon to
+            // come back and open its socket, where reporting early was a false
+            // negative.
+            try await tunnel.updateHelper()
             settings.bumpHelperState()
         } catch HelperInstaller.Failure.cancelled {
             helperError = nil
