@@ -13,6 +13,9 @@ struct ConnectScreen: View {
     /// The drawer's natural height, measured, so it opens to exactly its
     /// content rather than to a guess.
     @State private var drawerContent: CGFloat = 0
+    /// Everything above the drawer, measured, so the closed page can be
+    /// centred on it.
+    @State private var headHeight: CGFloat = 0
 
     /// One curve for everything the drawer moves: its height, its fade and the
     /// chevron — a spring, so the list settles instead of stopping dead.
@@ -21,6 +24,32 @@ struct ConnectScreen: View {
     private static let drawerGap: CGFloat = 10
 
     var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                head
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: HeadHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                if !tunnel.nodes.isEmpty {
+                    drawer(room: geometry.size.height - headHeight - Self.drawerGap)
+                        .frame(maxWidth: 560)
+                        .padding(.top, Self.drawerGap)
+                }
+            }
+            // Closed, the button and the picker under it sit in the middle of
+            // the page; top-aligned they left half the window empty. Opening
+            // the drawer lifts them to the top on the drawer's own spring, and
+            // the list takes the room that frees.
+            .padding(.top, serversOpen ? 0 : max(0, (geometry.size.height - headHeight) / 2))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .onPreferenceChange(HeadHeightKey.self) { headHeight = $0 }
+    }
+
+    /// The hero and the picker — the part of the page that is centred.
+    private var head: some View {
         VStack(spacing: 0) {
             hero.rise(0, page)
             if let announce = tunnel.info.announce {
@@ -34,7 +63,6 @@ struct ConnectScreen: View {
                 .padding(.top, 28)
                 .rise(0.07, page)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Hero
@@ -131,15 +159,7 @@ struct ConnectScreen: View {
             if tunnel.nodes.isEmpty {
                 Panel(radius: Radii.card, padding: 8) { emptyState }
             } else {
-                // The drawer may use whatever height is left under the picker;
-                // past that it scrolls.
-                GeometryReader { geometry in
-                    VStack(spacing: Self.drawerGap) {
-                        picker
-                        drawer(room: geometry.size.height - Self.pickerHeight - Self.drawerGap)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-                }
+                picker
             }
         }
     }
@@ -205,7 +225,8 @@ struct ConnectScreen: View {
     /// Every server, under the picker. Always in the hierarchy — only its
     /// height moves, from nothing to its measured content, so opening is one
     /// continuous motion rather than a list popping in and a card resizing
-    /// after it.
+    /// after it. It may use whatever height is left under the picker; past
+    /// that it scrolls.
     private func drawer(room: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 2) {
@@ -505,6 +526,14 @@ private func latencyTone(_ node: Node, _ palette: Palette) -> Color {
 
 /// The drawer's content height, reported from inside its scroll view.
 private struct DrawerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// The height of the hero and picker together.
+private struct HeadHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())

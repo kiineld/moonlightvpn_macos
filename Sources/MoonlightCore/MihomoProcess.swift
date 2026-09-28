@@ -47,6 +47,14 @@ public final class MihomoProcess: @unchecked Sendable {
         self.dataDirectory = dataDirectory
     }
 
+    /// Where the config this core runs is kept: inside its home, not beside it.
+    /// mihomo reloads only from a path under its home directory, and a config
+    /// kept one level up started fine and then failed every subscription
+    /// refresh with "path is not subpath of home directory".
+    public var configURL: URL {
+        dataDirectory.appendingPathComponent("config.yaml")
+    }
+
     public var isRunning: Bool {
         lock.lock(); defer { lock.unlock() }
         return process?.isRunning ?? false

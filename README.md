@@ -54,7 +54,9 @@ There is **no Xcode project**. SwiftPM builds the executables and
 `scripts/build-app.sh` assembles the bundle around them, so the whole thing —
 including the test suite — builds with the Command Line Tools alone. Only a
 universal (`ARCH=universal`) build needs full Xcode, because `swift build
---arch` shells out to `xcbuild`.
+--arch` shells out to `xcbuild`. Tools that ship the macOS 27 SDK cannot find
+the SwiftUI macro plugin under it; build against the 26.5 SDK there with
+`SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`.
 
 ### The data path
 
@@ -66,7 +68,10 @@ app traffic → system proxy or utun → mihomo → VLESS/Trojan/SS node
 
 The core is never reconfigured by restarting it. Switching a node, changing the
 split mode, or loading a refreshed subscription all go through the API or a
-config reload, so the tunnel survives every one of them.
+config reload, so the tunnel survives every one of them. The config is kept
+inside the core's home, `…/Moonlight/core/config.yaml`: mihomo reloads only from
+a path under its home directory, and a config kept beside it started fine and
+then failed every refresh.
 
 ### The core runs whether or not the tunnel is on
 
@@ -429,7 +434,9 @@ The server list works as on the phone: a pill naming the server in use, which
 opens into the full list beneath it. The list is always in the hierarchy and
 only its height moves — from nothing to its measured content, capped to the
 window and scrolling past that — on a spring, so opening is one continuous
-motion. Picking a server closes it. A latency reads `–` until the server has
+motion. Picking a server closes it. Closed, the button and the pill sit in the
+middle of the page; opening the list lifts them to the top on the same spring,
+and the list takes the room that frees. A latency reads `–` until the server has
 been probed, and `n/a` only once a probe got no answer within 5000 ms; timeouts
 are remembered across launches like the numbers are.
 
@@ -571,7 +578,9 @@ Start TUN listening error: configure tun interface: add route: 1.0.0.0/8: file e
 and then **keep running**. It answers its API normally with no interface
 established, so every other signal says "connected" while nothing is routed.
 `connect()` therefore checks the log for that line before reporting success, and
-names the cause rather than quoting the core at the user. The TUN block also
+names the cause rather than quoting the core at the user. The log checked is the
+helper's: the tunnel counts as TUN from the moment the helper takes the config,
+so the check reads the core that was just started, and a failure stops it. The TUN block also
 leaves the device name to the core, because a hardcoded `utun7` collides with
 whichever client already holds it.
 

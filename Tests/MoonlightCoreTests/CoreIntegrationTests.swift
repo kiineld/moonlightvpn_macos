@@ -40,13 +40,16 @@ func coreIntegrationTests() {
     // A port unlikely to collide with a core the developer is actually running.
     let controllerPort = 19_797
     let secret = "test-secret"
-    let process = MihomoProcess(binary: core, dataDirectory: workspace)
+    // The app's own layout: the core's home is a folder inside the app's.
+    let home = workspace.appendingPathComponent("core", isDirectory: true)
+    try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    let process = MihomoProcess(binary: core, dataDirectory: home)
 
     func overrides(_ mode: TunnelMode, _ split: SplitMode, _ rules: [SplitRule]) -> MihomoConfig.Overrides {
         MihomoConfig.Overrides(
             controllerPort: controllerPort, secret: secret, mixedPort: 17_897,
             mode: mode, splitMode: split, splitRules: rules,
-            dataDirectory: workspace.path
+            dataDirectory: home.path
         )
     }
 
@@ -81,7 +84,7 @@ func coreIntegrationTests() {
     }
 
     Check.suite("Core · RESTful API") {
-        let path = workspace.appendingPathComponent("run.yaml")
+        let path = process.configURL
         do {
             let yaml = try MihomoConfig.build(panelYAML: panel, overrides: overrides(.systemProxy, .all, []))
             try yaml.write(to: path, atomically: true, encoding: .utf8)
@@ -125,6 +128,13 @@ func coreIntegrationTests() {
                 try await api.select(node: "🇫🇮 Helsinki", in: "Панель")
                 let after = try await api.groups().first { $0.name == "Панель" }
                 Check.equal(after?.now, "🇫🇮 Helsinki", "selection round-trips through the API")
+
+                // Every subscription refresh reloads the running core from the
+                // file the app just wrote. mihomo refuses a path outside its
+                // home directory, so a config kept anywhere else starts fine and
+                // then fails each refresh.
+                try await api.reload(path: path.path)
+                Check.isTrue(true, "the core reloads the config the app writes")
 
                 let traffic = try await api.totals()
                 Check.isTrue(traffic.up >= 0 && traffic.down >= 0, "traffic counters read")

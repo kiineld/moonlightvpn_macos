@@ -50,7 +50,7 @@ public final class TunnelController: ObservableObject {
 
     private let support: URL
     private let coreBinary: URL
-    private var configURL: URL { support.appendingPathComponent("config.yaml") }
+    private var configURL: URL { core.configURL }
     private var panelURL: URL { support.appendingPathComponent("subscription.yaml") }
 
     /// The proxy group the app steers. Discovered from the running core rather
@@ -75,13 +75,15 @@ public final class TunnelController: ObservableObject {
         support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Moonlight", isDirectory: true)
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        // The core's home as well, since its config is written there before
+        // the core first starts.
+        let coreHome = support.appendingPathComponent("core", isDirectory: true)
+        try? FileManager.default.createDirectory(at: coreHome, withIntermediateDirectories: true)
+        // Where the config lived before it moved into the core's home.
+        try? FileManager.default.removeItem(at: support.appendingPathComponent("config.yaml"))
 
         coreBinary = bundle.coreBinaryURL
-        core = MihomoProcess(
-            binary: bundle.coreBinaryURL,
-            dataDirectory: support.appendingPathComponent("core", isDirectory: true)
-        )
+        core = MihomoProcess(binary: bundle.coreBinaryURL, dataDirectory: coreHome)
         api = MihomoAPI(port: preferences.controllerPort, secret: preferences.coreSecret)
 
         selectedNode = preferences.selectedNode
@@ -354,6 +356,12 @@ public final class TunnelController: ObservableObject {
                 )
                 try helper.version()
                 try helper.start(config: yaml)
+                // From here the helper's core is the one to read and to stop.
+                // Set only after the checks below, `coreLog` read the idle
+                // core's log, so a TUN that failed to come up — another VPN
+                // holding the routes — passed for connected; and a failure
+                // before then left the privileged core running.
+                activeMode = .tun
 
                 // Longer than the default: a panel config with `rule-providers`
                 // downloads them before the core binds its controller, and the
