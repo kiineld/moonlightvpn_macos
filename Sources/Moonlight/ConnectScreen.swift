@@ -21,9 +21,11 @@ struct ConnectScreen: View {
     @State private var aboveButton: CGFloat = 0
     @State private var belowButton: CGFloat = 0
 
-    /// One curve for everything the drawer moves: its height, its fade and the
-    /// chevron — a spring, so the list settles instead of stopping dead.
-    private static let drawer = Animation.spring(response: 0.42, dampingFraction: 0.86)
+    /// One curve for everything the drawer moves — the button's size, the
+    /// page's offset, the list's height and fade, the chevron. A spring
+    /// damped to just short of settling on its own: it eases in and lands
+    /// without the overshoot that makes a bounce read as a toy.
+    static let drawer = Animation.spring(response: 0.55, dampingFraction: 0.92)
     private static let pickerHeight: CGFloat = 60
     private static let drawerGap: CGFloat = 10
 
@@ -31,6 +33,11 @@ struct ConnectScreen: View {
         GeometryReader { geometry in
             let height = geometry.size.height
             let button = PowerButton.side(large: !serversOpen)
+            // The window's centre, in this page's coordinates. The page starts
+            // under the title bar and ends above a margin, so its own centre
+            // sits lower than the window's — and the eye centres on the window.
+            let frame = geometry.frame(in: .global)
+            let centre = (frame.minY + height + RootView.pageBottomInset) / 2 - frame.minY
             VStack(spacing: 0) {
                 timer
                     .padding(.bottom, 20)
@@ -52,25 +59,24 @@ struct ConnectScreen: View {
                         .padding(.top, Self.drawerGap)
                 }
             }
-            // Closed, the button is the page: large, with its centre on the
-            // page's centre, and pulled up only as far as it takes for the rest
-            // to fit. Opening the drawer shrinks it and lifts the column to the
-            // top on the drawer's own spring, and the list takes the room that
-            // frees.
+            // Closed, the button is the page: large, and the column it heads —
+            // time, button, state, servers — sits in the middle of the window,
+            // as much space above as below. Centring the button alone left the
+            // column hanging low under a band of empty space. Opening the
+            // drawer shrinks the button and lifts the column to the top, and
+            // the list takes the room that frees.
             .padding(.top, serversOpen ? 0 : Self.centredOffset(
-                page: height, above: aboveButton, button: button, below: belowButton))
+                page: height, centre: centre, column: aboveButton + button + belowButton))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onPreferenceChange(AboveButtonKey.self) { aboveButton = $0 }
         .onPreferenceChange(BelowButtonKey.self) { belowButton = $0 }
     }
 
-    /// How far down to start the column so the button's centre lands on the
-    /// page's, without pushing what is under it off the bottom.
-    static func centredOffset(page: CGFloat, above: CGFloat, button: CGFloat, below: CGFloat) -> CGFloat {
-        let centred = page / 2 - above - button / 2
-        let lowest = page - above - button - below
-        return max(0, min(centred, lowest))
+    /// How far down to start the column so its middle lands on `centre`,
+    /// without pushing its end off the bottom of the page.
+    static func centredOffset(page: CGFloat, centre: CGFloat, column: CGFloat) -> CGFloat {
+        max(0, min(centre - column / 2, page - column))
     }
 
     private func measure<Key: PreferenceKey>(_ key: Key.Type) -> some View where Key.Value == CGFloat {
@@ -255,8 +261,8 @@ struct ConnectScreen: View {
     private func drawer(room: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 2) {
-                autoRow
-                ForEach(tunnel.selectableNodes) { node in
+                autoRow.modifier(Cascade(index: 0, shown: serversOpen))
+                ForEach(Array(tunnel.selectableNodes.enumerated()), id: \.element.id) { index, node in
                     NodeRow(
                         node: node,
                         selected: !tunnel.autoSelect && node.name == tunnel.selectedNode,
@@ -265,6 +271,7 @@ struct ConnectScreen: View {
                         Task { await tunnel.select(node: node.name) }
                         withAnimation(Self.drawer) { serversOpen = false }
                     }
+                    .modifier(Cascade(index: index + 1, shown: serversOpen))
                 }
             }
             .background(
@@ -278,7 +285,14 @@ struct ConnectScreen: View {
         .padding(8)
         .frame(height: serversOpen ? max(0, min(drawerContent + 16, room)) : 0, alignment: .top)
         .mlGlass(.rounded(Radii.card), fallback: palette.surface)
+        // Unfolds from the picker: a hair smaller and transparent while
+        // closed, so the card grows out of the pill instead of sliding in.
+        .scaleEffect(serversOpen ? 1 : 0.97, anchor: .top)
+        .animation(Self.drawer, value: serversOpen)
+        // Closing, the card fades faster than it folds, so an empty card is
+        // never left shrinking after its rows have gone.
         .opacity(serversOpen ? 1 : 0)
+        .animation(serversOpen ? Self.drawer : .easeOut(duration: 0.2), value: serversOpen)
         .allowsHitTesting(serversOpen)
     }
 
@@ -395,7 +409,7 @@ private struct PowerButton: View {
 
     /// Everything is drawn at this multiple of the compact size, so the knob,
     /// the glyph and the corner grow together rather than the tile alone.
-    private static let largeScale: CGFloat = 1.5
+    private static let largeScale: CGFloat = 2
     private static let compactTile: CGFloat = 92
 
     static func side(large: Bool) -> CGFloat { compactTile * (large ? largeScale : 1) }
@@ -565,6 +579,27 @@ private struct DrawerHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// A drawer row's arrival: each fades up a few points a beat after the one
+/// above, as the card opens. Only the first few are staggered, so a long list
+/// is not still arriving after the card has settled; closing drops them all at
+/// once and quickly, since nobody watches a list leave.
+private struct Cascade: ViewModifier {
+    let index: Int
+    let shown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 6)
+            .animation(
+                shown
+                    ? ConnectScreen.drawer.delay(0.05 + 0.025 * Double(min(index, 8)))
+                    : .easeOut(duration: 0.14),
+                value: shown
+            )
     }
 }
 

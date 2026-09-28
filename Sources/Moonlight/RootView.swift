@@ -18,6 +18,8 @@ struct RootView: View {
 
     /// The gap between the floating sidebar and the window's edges.
     static let gutter: CGFloat = 8
+    /// The space under every page, down to the window's bottom edge.
+    static let pageBottomInset: CGFloat = 24
 
     /// The traffic lights sit on the bare window above the sidebar, so the
     /// sidebar starts just under their row. Sized from where AppKit actually
@@ -66,7 +68,7 @@ struct RootView: View {
             }
             .padding(.horizontal, 28)
             .padding(.top, page == .connect ? 26 : 18)
-            .padding(.bottom, 24)
+            .padding(.bottom, Self.pageBottomInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

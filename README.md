@@ -455,12 +455,21 @@ The server list works as on the phone: a pill naming the server in use, which
 opens into the full list beneath it. The list is always in the hierarchy and
 only its height moves — from nothing to its measured content, capped to the
 window and scrolling past that — on a spring, so opening is one continuous
-motion. Picking a server closes it. Closed, the power button is drawn at one
-and a half times its size with its centre on the page's centre; opening the
-list shrinks it and lifts the column to the top on the same spring, and the
+motion. Picking a server closes it. Closed, the power button is drawn at twice
+its size, and the column it heads — time, button, state, servers — is centred
+on the *window*, as much space above as below; centring the button alone left
+the column hanging low under a band of empty space, and the page itself starts
+under the title bar, so its own centre sits lower than the eye expects.
+Opening the list shrinks the button and lifts the column to the top, and the
 list takes the room that frees. The offset is worked out from the parts above
 and below the button, which the drawer does not change, so the whole move is
-one animation rather than a jump once the page is re-measured. A latency reads `–` until the server has
+one animation rather than a jump once the page is re-measured.
+
+Everything the drawer moves shares one spring, damped just short of settling on
+its own — it eases in and lands without an overshoot. The card unfolds from the
+pill, a hair smaller and transparent while closed; its first rows fade up a
+beat apart as it opens. Closing drops the rows and the card quickly, so no
+empty card is left folding after its rows have gone. A latency reads `–` until the server has
 been probed, and `n/a` only once a probe got no answer within 5000 ms; timeouts
 are remembered across launches like the numbers are.
 
