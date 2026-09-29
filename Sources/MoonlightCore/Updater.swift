@@ -168,6 +168,11 @@ public final class Updater: ObservableObject {
         }
         let script = FileManager.default.temporaryDirectory
             .appendingPathComponent("moonlight-update-\(UUID().uuidString).sh")
+        // The name is lower-case since 1.8.2, as the brand is. An older install
+        // is renamed as it is replaced; one the user renamed keeps their name.
+        let target = bundle.lastPathComponent.lowercased() == "moonlight.app"
+            ? bundle.deletingLastPathComponent().appendingPathComponent("moonlight.app")
+            : bundle
 
         // `ditto` rather than `cp -R`: it preserves the bundle's extended
         // attributes and any signature, which a plain copy strips.
@@ -197,22 +202,22 @@ public final class Updater: ObservableObject {
         mount=$(mktemp -d)
         hdiutil attach -nobrowse -readonly -noverify -quiet -mountpoint "$mount" '\(image.path)' || fail
         trap 'hdiutil detach "$mount" -force >/dev/null 2>&1' EXIT
-        [ -d "$mount/Moonlight.app" ] || fail
+        [ -d "$mount/moonlight.app" ] || fail
 
         # The old copy waits in a private temporary folder, not beside the
         # new one: parked as Moonlight.app.old in /Applications, Spotlight
-        # indexed it mid-swap and the Apps view showed two Moonlights.
+        # indexed it mid-swap and the Apps view showed two of them.
         parked=$(mktemp -d)
-        mv '\(bundle.path)' "$parked/Moonlight.app" || fail
-        if ! ditto "$mount/Moonlight.app" '\(bundle.path)'; then
+        mv '\(bundle.path)' "$parked/old.app" || fail
+        if ! ditto "$mount/moonlight.app" '\(target.path)'; then
           # Put the old one back rather than leaving the user with no app.
-          rm -rf '\(bundle.path)'
-          mv "$parked/Moonlight.app" '\(bundle.path)'
+          rm -rf '\(target.path)'
+          mv "$parked/old.app" '\(bundle.path)'
           fail
         fi
         rm -rf "$parked"
-        xattr -dr com.apple.quarantine '\(bundle.path)' 2>/dev/null || true
-        open '\(bundle.path)'
+        xattr -dr com.apple.quarantine '\(target.path)' 2>/dev/null || true
+        open '\(target.path)'
         rm -f '\(image.path)' "$0"
         """
         try body.write(to: script, atomically: true, encoding: .utf8)
@@ -262,7 +267,7 @@ public final class Updater: ObservableObject {
             case .badResponse: return "GitHub did not answer with a release"
             case .noAsset: return "That release has no universal build attached"
             case .notReplaceable:
-                return "Move Moonlight to the Applications folder, then update"
+                return "Move moonlight to the Applications folder, then update"
             case .damaged:
                 return "The download arrived damaged. Try again"
             }

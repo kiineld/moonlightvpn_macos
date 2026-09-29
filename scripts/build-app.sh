@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Moonlight.app.
+# Build moonlight.app.
 #
 #   scripts/build-app.sh                 native architecture
 #   ARCH=universal scripts/build-app.sh  x86_64 + arm64 in one bundle
@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 ARCH="${ARCH:-native}"
 VERSION="${VERSION:-$(cat VERSION 2>/dev/null || echo 1.0.0)}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
-APP="build/Moonlight.app"
+APP="build/moonlight.app"
 CONTENTS="$APP/Contents"
 
 # Deployment endpoints. Overridden by the environment so a fork points these at
@@ -67,8 +67,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Moonlight</string>
-    <key>CFBundleDisplayName</key><string>Moonlight</string>
+    <key>CFBundleName</key><string>moonlight</string>
+    <key>CFBundleDisplayName</key><string>moonlight</string>
     <key>CFBundleIdentifier</key><string>vpn.moonlight.desktop</string>
     <key>CFBundleExecutable</key><string>Moonlight</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -95,7 +95,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
-            <key>CFBundleURLName</key><string>Moonlight subscription</string>
+            <key>CFBundleURLName</key><string>moonlight subscription</string>
             <key>CFBundleURLSchemes</key><array><string>moonlight</string></array>
         </dict>
     </array>

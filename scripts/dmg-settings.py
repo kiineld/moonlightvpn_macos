@@ -5,10 +5,14 @@
 # released images are actually built.
 import os.path
 
-application = defines.get("app", "build/Moonlight.app")  # noqa: F821
+application = defines.get("app", "build/moonlight.app")  # noqa: F821
 appname = os.path.basename(application)
 
 format = "UDZO"
+# Case-insensitive, and must stay so: the bundle is `moonlight.app` since
+# 1.8.2, and the updaters of earlier versions look for `Moonlight.app` in the
+# image — which a case-sensitive filesystem would not have.
+filesystem = "HFS+"
 compression_level = 9
 files = [application]
 symlinks = {"Applications": "/Applications"}

@@ -13,6 +13,10 @@ struct RootView: View {
     /// Handed down, not observed: its download ticks would re-run the whole
     /// window. The banner and Settings observe it themselves.
     let updater: Updater
+    /// A `moonlight://` link waiting to be asked about.
+    @ObservedObject private var links = DeepLinks.shared
+    /// For the link sheet only, and not observed — see the note above.
+    let tunnel: TunnelController
     /// Where AppKit put the traffic lights, measured rather than assumed.
     @State private var titleBarCentre: CGFloat = 14
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
@@ -59,6 +63,23 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowConfigurator(buttonCentre: $titleBarCentre))
         .environmentObject(updater)
+        .sheet(item: $links.pending) { request in
+            LinkImportSheet(
+                tunnel: tunnel,
+                request: request,
+                close: { links.pending = nil },
+                connect: {
+                    links.pending = nil
+                    page = .connect
+                    Task { await tunnel.connect() }
+                }
+            )
+            // A sheet is a window of its own, and takes none of this one's
+            // theme or language with it unless handed them.
+            .environment(\.palette, settings.palette)
+            .mlLocale(settings.locale)
+            .preferredColorScheme(settings.theme == .dark ? .dark : .light)
+        }
         .environment(\.palette, settings.palette)
         .mlLocale(settings.locale)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)

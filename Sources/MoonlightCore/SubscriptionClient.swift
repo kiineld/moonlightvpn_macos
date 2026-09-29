@@ -225,10 +225,9 @@ public struct SubscriptionClient: Sendable {
 
 /// The identity this install presents to the panel.
 public struct DeviceIdentity: Sendable {
-    /// A random UUID minted once and stored, **not** a hardware identifier. It
-    /// gives the panel a stable per-install handle for its device limit while
-    /// carrying no hardware identity off the machine. Resetting the app mints a
-    /// new one, which is the right trade.
+    /// This Mac's identity for the device limit — derived from the hardware,
+    /// so a reinstall is the same device, and hashed, so the hardware's own
+    /// identifier stays on the machine. See ``MachineIdentity``.
     public var hwid: String
     public var osVersion: String
     public var model: String

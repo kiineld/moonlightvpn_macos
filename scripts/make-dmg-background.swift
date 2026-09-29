@@ -71,7 +71,7 @@ func drawBackdrop(_ context: CGContext) {
 
     // AppKit's origin is bottom-left; the numbers below read top-down.
     draw("moonlight", font("Unbounded", 27, .bold), deep, centreX: width / 2, y: height - 78)
-    draw("Перетащите Moonlight в папку «Программы»",
+    draw("Перетащите moonlight в папку «Программы»",
          font("Onest", 14, .medium), muted, centreX: width / 2, y: height - 112)
     draw("Drag the app into your Applications folder",
          font("Onest", 12, .regular), muted.withAlphaComponent(0.75),

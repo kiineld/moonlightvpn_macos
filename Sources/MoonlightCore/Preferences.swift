@@ -55,7 +55,12 @@ public final class Preferences: @unchecked Sendable {
 
     /// A random UUID minted once. Not a hardware identifier — see
     /// ``DeviceIdentity``.
+    /// This Mac's HWID: from the hardware (see ``MachineIdentity``), so it
+    /// survives updates, reinstalls and wiped settings. A random one, minted
+    /// once and stored, is only the fallback for a machine whose hardware
+    /// identifier cannot be read.
     public var hwid: String {
+        if let machine = MachineIdentity.hwid() { return machine }
         if let existing = defaults.string(forKey: Key.hwid) { return existing }
         let minted = UUID().uuidString
         defaults.set(minted, forKey: Key.hwid)

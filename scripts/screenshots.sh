@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP=build/Moonlight.app
+APP=build/moonlight.app
 OUT=docs/screenshots
 [ -d "$APP" ] || { echo "run scripts/build-app.sh first" >&2; exit 1; }
 mkdir -p "$OUT"
@@ -20,8 +20,8 @@ let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[Strin
 // The app also owns unnamed auxiliary windows — one of them is a 500×500 blank
 // that is easy to capture by mistake. The document window is the one carrying
 // the app's own title.
-for w in list where (w[kCGWindowOwnerName as String] as? String) == "Moonlight"
-    && (w[kCGWindowName as String] as? String) == "Moonlight" {
+for w in list where (w[kCGWindowOwnerName as String] as? String) == "moonlight"
+    && (w[kCGWindowName as String] as? String) == "moonlight" {
     let bounds = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
     if (bounds["Height"] as? Double ?? 0) > 200 {
         print(w[kCGWindowNumber as String] as? Int ?? -1)
@@ -32,7 +32,7 @@ SWIFT
 swiftc -O /tmp/moonlight-winid.swift -o /tmp/moonlight-winid
 
 for page in connect sub rules settings import; do
-  pkill -f "Moonlight.app/Contents/MacOS/Moonlight" 2>/dev/null || true
+  pkill -f "moonlight.app/Contents/MacOS/Moonlight" 2>/dev/null || true
   sleep 1
   ML_PAGE="$page" "$APP/Contents/MacOS/Moonlight" >/dev/null 2>&1 &
   sleep 9
@@ -42,4 +42,4 @@ for page in connect sub rules settings import; do
   sips -Z 1400 "$OUT/$page.png" --out "$OUT/$page.png" >/dev/null
   echo "  $OUT/$page.png"
 done
-pkill -f "Moonlight.app/Contents/MacOS/Moonlight" 2>/dev/null || true
+pkill -f "moonlight.app/Contents/MacOS/Moonlight" 2>/dev/null || true

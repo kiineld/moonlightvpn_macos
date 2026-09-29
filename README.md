@@ -1,7 +1,7 @@
-# Moonlight VPN — macOS
+# moonlight vpn — macOS
 
 A SwiftUI client built on **[mihomo](https://github.com/MetaCubeX/mihomo) 1.19.29**,
-implementing the `Moonlight Desktop` design. Subscriptions come from a Remnawave
+implementing the `moonlight Desktop` design. Subscriptions come from a Remnawave
 panel. Companion to [moonlightvpn_android](https://github.com/kiineld/moonlightvpn_android),
 which is the same product on Xray-core.
 
@@ -35,7 +35,7 @@ Gatekeeper refuses it the first time. Right-click the app in Applications and
 choose *Open*, or:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Moonlight.app
+xattr -dr com.apple.quarantine /Applications/moonlight.app
 ```
 
 ## Architecture
@@ -327,15 +327,34 @@ rather than skipping one node.
 The subscription request carries Remnawave's device headers:
 
 ```
-x-hwid:         <random UUID, minted once, stored in UserDefaults>
+x-hwid:         <from this Mac's hardware — see below>
 x-device-os:    macOS
 x-ver-os:       <system version>
 x-device-model: <MacBook Pro, …>
 ```
 
-The HWID is a **random UUID, not a hardware identifier**. It gives the panel a
-stable per-install handle for its device limit and carries no hardware identity
-off the machine.
+The HWID comes from the **hardware**: the Mac's `IOPlatformUUID`, hashed
+(SHA-256, with the app's own salt) and laid out as a UUID. It is the same after
+an update, a reinstall, or wiped settings, so the service counts one Mac as one
+device however often the app is reinstalled — and the hardware identifier
+itself never leaves the machine. It used to be a random UUID stored with the
+settings, which a reinstall replaced; a Mac that ran such a version shows up
+once more, as a new device, the first time it refreshes.
+
+### Links that add a subscription
+
+`moonlight://install-config?url=<subscription link>` — the form Clash clients
+use, so a service's "add to app" button needs nothing moonlight-specific.
+`moonlight://import?url=…` and `moonlight:///import?url=…` work too, as in
+Flowvy. Percent-encode the whole link (`encodeURIComponent`); one that was not
+is still read to the end, `&` and all. Only `http(s)` links are accepted.
+
+A link never adds anything on its own — any page can open one, and a
+subscription added unseen would route the Mac through whoever wrote the page.
+The app comes forward (reopening its window if it was closed to the menu bar),
+asks, and says whether it will replace the current subscription or update it;
+the link itself is never shown. Links go to the app delegate rather than to the
+scene, which opened another window for each.
 
 ### Response headers
 
@@ -581,7 +600,7 @@ glass.
 ```bash
 scripts/fetch-mihomo.sh   # ~90 MB, lipo'd from the two darwin releases
 scripts/fetch-fonts.sh
-scripts/build-app.sh      # build/Moonlight.app
+scripts/build-app.sh      # build/moonlight.app
 ```
 
 `ARCH=universal scripts/build-app.sh` for both slices, which needs full Xcode.
@@ -700,8 +719,6 @@ whichever client already holds it.
 - Pasting a bare `vless://` link imports nothing; the import path expects a
   subscription URL. Single-node import is not implemented.
 - Reconnect-on-network-change is not implemented.
-- `moonlight://` is registered as a URL scheme in `Info.plist`, but the handler
-  is not wired up yet.
 
 ## Licence
 

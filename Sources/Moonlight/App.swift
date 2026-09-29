@@ -20,7 +20,7 @@ struct MoonlightApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(updater: services.updater)
+            RootView(updater: services.updater, tunnel: tunnel)
                 .environmentObject(tunnel)
                 .environmentObject(settings)
                 .environmentObject(LogStore.shared)
@@ -35,9 +35,12 @@ struct MoonlightApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
+        // `moonlight://` links go to the app delegate, not to a new window:
+        // left to the scene, each link opened another one.
+        .handlesExternalEvents(matching: [])
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Moonlight") {
+            CommandMenu("moonlight") {
                 ConnectCommand(tunnel: tunnel)
 
                 Button("Refresh subscription") {
@@ -234,6 +237,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    /// A `moonlight://` link — from a website's "add to app" button, or a chat.
+    /// It is held until the window can ask about it; the window is brought
+    /// back if it was closed to the menu bar, since that is where it asks.
+    @MainActor
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { DeepLinks.shared.receive(url) }
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.mainWindowCandidate {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // Closed to the menu bar, SwiftUI has no window to bring forward;
+            // a reopen event makes it build one, and that one asks.
+            NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
     }
 
     /// Banners show while the app is frontmost too — the default is to drop

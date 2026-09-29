@@ -95,16 +95,16 @@ jobs:
           set -e
           for binary in Contents/MacOS/Moonlight Contents/Resources/moonlight-helper Contents/Resources/mihomo; do
             echo "── $binary"
-            lipo -info "build/Moonlight.app/$binary"
+            lipo -info "build/moonlight.app/$binary"
           done
           # A universal build that quietly produced one slice would install fine
           # and then fail to launch on the other architecture.
           if [ "${{ matrix.arch }}" = "universal" ]; then
-            lipo -info build/Moonlight.app/Contents/MacOS/Moonlight | grep -q "x86_64 arm64"
+            lipo -info build/moonlight.app/Contents/MacOS/Moonlight | grep -q "x86_64 arm64"
           fi
           # Built against an SDK without Liquid Glass, the app falls back to
           # flat surfaces and still compiles — so check the glass is in it.
-          nm -u build/Moonlight.app/Contents/MacOS/Moonlight | grep -q glassEffect \
+          nm -u build/moonlight.app/Contents/MacOS/Moonlight | grep -q glassEffect \
             || { echo "::error::built without Liquid Glass — the SDK is older than macOS 26"; exit 1; }
 
       - name: Package
@@ -154,7 +154,7 @@ jobs:
             echo "Right-click the app in Applications and choose *Open*, or run:"
             echo
             echo '```bash'
-            echo 'xattr -dr com.apple.quarantine /Applications/Moonlight.app'
+            echo 'xattr -dr com.apple.quarantine /Applications/moonlight.app'
             echo '```'
             echo
             echo "### Checksums"
@@ -165,6 +165,6 @@ jobs:
           } > notes.md
 
           gh release create "$GITHUB_REF_NAME" \
-            --title "Moonlight $version" \
+            --title "moonlight $version" \
             --notes-file notes.md \
             artifacts/*.dmg artifacts/*.dmg.sha256

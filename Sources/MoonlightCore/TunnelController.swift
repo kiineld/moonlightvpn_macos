@@ -168,6 +168,15 @@ public final class TunnelController: ObservableObject {
         preferences.subscriptionURL?.isEmpty == false
     }
 
+    /// Whether `link` is the subscription already in use — so a link that
+    /// adds it again can say it will be updated rather than replaced.
+    public func isCurrentSubscription(_ link: String) -> Bool {
+        guard let current = preferences.subscriptionURL.flatMap(SubscriptionClient.normalize) else {
+            return false
+        }
+        return SubscriptionClient.normalize(link) == current
+    }
+
     /// Whether a previously fetched subscription is on disk, so there is
     /// something to show and run before the network answers.
     public var hasCachedSubscription: Bool {
