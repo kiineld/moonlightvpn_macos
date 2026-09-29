@@ -63,9 +63,13 @@ enum LoginLaunch {
 enum LaunchTasks {
     private static var done = false
 
-    static func runOnce(tunnel: TunnelController, settings: AppSettings) async {
+    static func runOnce(tunnel: TunnelController, settings: AppSettings, updater: Updater) async {
         guard !done else { return }
         done = true
+        // Beside the rest rather than after it: a refresh can take a while,
+        // and the check has no need of the tunnel. What it finds is announced
+        // by `UpdateBanner`.
+        Task { await updater.check(silently: true) }
         guard tunnel.hasSubscription else { return }
         // A subscription cached from a previous launch gives the server list
         // something to show before the network answers, so launch only

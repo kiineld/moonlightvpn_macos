@@ -11,7 +11,7 @@ struct SettingsScreen: View {
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
 
-    @StateObject private var updater = Updater()
+    @EnvironmentObject var updater: Updater
     @State private var helperBusy = false
     @State private var helperError: String?
 
@@ -33,6 +33,15 @@ struct SettingsScreen: View {
             .onChange(of: updater.state.isUnderWay) { underWay in
                 guard underWay else { return }
                 withAnimation(Motion.slide) { scroller.scrollTo(Self.aboutID, anchor: .bottom) }
+            }
+            // Arrived from the update banner, the install may already be under
+            // way by the time the page appears, and then nothing changes to
+            // bring the progress into view.
+            .onAppear {
+                guard updater.state.isUnderWay else { return }
+                DispatchQueue.main.async {
+                    withAnimation(Motion.slide) { scroller.scrollTo(Self.aboutID, anchor: .bottom) }
+                }
             }
         }
     }

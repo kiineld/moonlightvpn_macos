@@ -84,6 +84,7 @@ public enum L {
         case updateChecking, updateUpToDate, updateAvailable, updateDownloading
         case updateInstalling, updateInstall, updateFailed
         case updateVerifying, updateVerifyingHint, updateRestartHint, updateTo, updateDownloadHint
+        case updateBannerTitle, updateBannerBody
         // Menu bar tray
         case routingRule, routingGlobal, routingDirect, pingAll, pingOne, searchServers
         case openWindow, connectAction, disconnectAction, keepOpen, stopKeepingOpen
@@ -272,6 +273,8 @@ public enum L {
             case .colTime: return "ВРЕМЯ"
             case .updateChecking: return "Проверяем…"
             case .updateUpToDate: return "Установлена последняя версия"
+            case .updateBannerTitle: return "Доступно обновление"
+            case .updateBannerBody: return "Moonlight {version} — нажмите, чтобы установить"
             case .updateAvailable: return "Доступна версия"
             case .updateDownloading: return "Загрузка"
             case .updateInstalling: return "Перезапуск…"
@@ -507,6 +510,8 @@ public enum L {
             case .colTime: return "TIME"
             case .updateChecking: return "Checking…"
             case .updateUpToDate: return "You are on the latest version"
+            case .updateBannerTitle: return "Update available"
+            case .updateBannerBody: return "Moonlight {version} — click to install"
             case .updateAvailable: return "Version available"
             case .updateDownloading: return "Downloading"
             case .updateInstalling: return "Restarting…"

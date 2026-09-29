@@ -10,6 +10,9 @@ struct RootView: View {
     // Not the tunnel: nothing here reads it, and observing it re-ran the whole
     // window — sidebar, page and all — on every change it published.
     @EnvironmentObject var settings: AppSettings
+    /// Handed down, not observed: its download ticks would re-run the whole
+    /// window. The banner and Settings observe it themselves.
+    let updater: Updater
     /// Where AppKit put the traffic lights, measured rather than assumed.
     @State private var titleBarCentre: CGFloat = 14
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
@@ -37,7 +40,14 @@ struct RootView: View {
                 .padding(.leading, Self.gutter)
                 .padding(.bottom, Self.gutter)
                 .zIndex(1)
+            // Outside the page's own identity, so it stays put — and stays
+            // dismissed — as the pages change under it.
             content
+                .overlay(alignment: .topTrailing) {
+                    UpdateBanner(updater: updater, page: $page)
+                        .padding(.trailing, Self.pageGutter)
+                        .padding(.top, 10)
+                }
         }
         .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,6 +58,7 @@ struct RootView: View {
         // further down.
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowConfigurator(buttonCentre: $titleBarCentre))
+        .environmentObject(updater)
         .environment(\.palette, settings.palette)
         .mlLocale(settings.locale)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)

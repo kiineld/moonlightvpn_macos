@@ -215,6 +215,13 @@ The app is not notarised and there is no App Store, so **Settings → Прове
 обновления** does what a user would otherwise do by hand: ask GitHub for the
 latest release, download the universal DMG, and swap the bundle.
 
+The app also asks once each time it opens, quietly: a failed check goes to the
+log, not onto the Settings page. When there is a newer version a banner says so
+in the corner of the window; clicking it opens Settings and starts the install,
+with its progress in view, and its cross puts it away until the next launch.
+The updater is one object for the whole app, so Settings shows what that check
+found.
+
 The download reports as it goes — "12,3 МБ из 36,6 МБ" beside the spinner,
 with a bar, the version, and a line saying what the wait ends in — and the
 image is checked against the `.sha256` the release attaches before anything is

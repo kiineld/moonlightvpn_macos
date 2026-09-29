@@ -20,7 +20,7 @@ struct MoonlightApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(updater: services.updater)
                 .environmentObject(tunnel)
                 .environmentObject(settings)
                 .environmentObject(LogStore.shared)
@@ -29,7 +29,10 @@ struct MoonlightApp: App {
                     delegate.settings = settings
                     delegate.attachStatusItem()
                 }
-                .task { await LaunchTasks.runOnce(tunnel: tunnel, settings: settings) }
+                .task {
+                    await LaunchTasks.runOnce(tunnel: tunnel, settings: settings,
+                                              updater: services.updater)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -53,8 +56,8 @@ struct MoonlightApp: App {
     }
 }
 
-/// The controller and the log, created once and handed down — without the
-/// app observing either.
+/// The controller, the updater and the log, created once and handed down —
+/// without the app observing any of them.
 ///
 /// Both used to be `@StateObject`s of the app itself, which subscribes the
 /// whole scene to them: every line the core logged and every tick of the
@@ -67,6 +70,10 @@ struct MoonlightApp: App {
 @MainActor
 private final class Services: ObservableObject {
     let tunnel = TunnelController()
+    /// One for the app rather than one per visit to Settings, so what the
+    /// launch check found is what Settings shows — and the banner that
+    /// announces it can start the install Settings then follows.
+    let updater = Updater()
 }
 
 /// "Connect" or "Disconnect" in the menu — the one part of the commands that

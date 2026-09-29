@@ -67,8 +67,11 @@ public final class Updater: ObservableObject {
     private var downloadURL: URL?
     private var checksumURL: URL?
 
-    public func check() async {
-        guard state != .checking else { return }
+    /// - Parameter silently: For the check the app makes on its own at launch.
+    ///   A failure — offline, GitHub limiting requests — goes to the log and
+    ///   leaves no error on the Settings page for a check nobody asked for.
+    public func check(silently: Bool = false) async {
+        guard state != .checking, !state.isUnderWay else { return }
         state = .checking
         LogStore.shared.client("Checking for updates (current \(currentVersion))")
 
@@ -108,8 +111,9 @@ public final class Updater: ObservableObject {
             LogStore.shared.client("Update available: \(latest)")
             state = .available(version: latest, notes: object["body"] as? String ?? "")
         } catch {
-            LogStore.shared.client("Update check failed: \(error.localizedDescription)", level: .error)
-            state = .failed(error.localizedDescription)
+            LogStore.shared.client("Update check failed: \(error.localizedDescription)",
+                                   level: silently ? .warning : .error)
+            state = silently ? .idle : .failed(error.localizedDescription)
         }
     }
 
