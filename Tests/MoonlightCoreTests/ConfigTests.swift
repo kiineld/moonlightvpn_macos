@@ -2,15 +2,10 @@ import Foundation
 import Yams
 import MoonlightCore
 
-private func overrides(
-    mode: TunnelMode = .systemProxy,
-    split: SplitMode = .all,
-    rules: [SplitRule] = []
-) -> MihomoConfig.Overrides {
+private func overrides(mode: TunnelMode = .systemProxy) -> MihomoConfig.Overrides {
     MihomoConfig.Overrides(
         controllerPort: 9797, secret: "s3cret", mixedPort: 7897,
-        mode: mode, splitMode: split, splitRules: rules,
-        dataDirectory: "/tmp/moonlight-core"
+        mode: mode, dataDirectory: "/tmp/moonlight-core"
     )
 }
 

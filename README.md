@@ -66,8 +66,8 @@ app traffic → system proxy or utun → mihomo → VLESS/Trojan/SS node
                         app ── RESTful API on 127.0.0.1:9797
 ```
 
-The core is never reconfigured by restarting it. Switching a node, changing the
-split mode, or loading a refreshed subscription all go through the API or a
+The core is never reconfigured by restarting it. Switching a node, applying
+rules, or loading a refreshed subscription all go through the API or a
 config reload, so the tunnel survives every one of them. The config is kept
 inside the core's home, `…/Moonlight/core/config.yaml`: mihomo reloads only from
 a path under its home directory, and a config kept beside it started fine and
@@ -281,46 +281,24 @@ Extend rules go after the subscription's rules but before its catch-all
 `MATCH`; appended after it, as the grammar would literally have it, they could
 never match. A rule pointing at a group the subscription has since dropped is
 left out of the config, and shown in red, rather than taking the config down.
-Overrides also come before the split rules below. Rules apply in the "rules"
-routing mode, not in global or direct.
+Rules apply in the "rules" routing mode, not in global or direct.
 
 **Subscription rules** lists the subscription's own rules as it wrote them —
 logical rules and `no-resolve` parsed properly, not split on commas — to read.
 
-## Split tunnelling
+### Per-app routing
 
-The apps page is `PROCESS-NAME` rules composed with the subscription's routing,
-matched on the **executable name** — `CFBundleExecutable`, not the bundle id,
-because the core sees a process. Hand-written rules used to live beside the app
-switches; they moved to the rules page, where they can point anywhere. The
-first launch that has the rules page moves any it finds: from "all except"
-mode as rules to `DIRECT`, from "only these" as rules to the group the
-subscription routes through, and from "all traffic" — where they did nothing —
-switched off.
-
-The TUN constraint is **per rule, not per screen**. `PROCESS-*` rules need the
-core to identify the process behind a connection, which only TUN can do — under
-a system proxy the core is handed a socket with no process behind it, so those
-rules are dropped from the generated config rather than written and silently
-never matched. Domain, address and port rules work in both modes.
-
-The three modes are not symmetric, because preserving the panel's own routing
-means something different in each:
-
-| Mode | Rules |
-|---|---|
-| All traffic | the panel's rules, untouched |
-| Except these | the split rules prepended pointing at `DIRECT` — what they match never reaches the panel's rules, everything else sees them as written |
-| Only these | what they match is handed to the panel's rules through a `SUB-RULE`, and everything else falls to `MATCH,DIRECT` |
-
-"Only these" could have pointed the rules straight at the selector, which is
-simpler and wrong: it forces *all* of that traffic through the node, including
-the hosts the panel deliberately routes direct, so a selected browser would lose
-the panel's split for local sites.
-
-An empty selection in "only these" falls back to tunnelling everything — an
-empty allow-list routes nothing at all, which reads as a broken VPN rather than
-as a configuration choice.
+An app is a process rule: `PROCESS-NAME`, matched on the **executable name** —
+`CFBundleExecutable`, not the bundle id, because the core sees a process — sent
+wherever the rule says. Earlier versions had an apps screen for this, with
+switches per app and three split modes (every connection through the tunnel,
+only the selected apps, or all but them). Rules do that job and more, so the
+screen and its modes are gone. The first launch without them carries over what
+was set there as rules of the user's own and forgets the rest: from "all but
+these" as rules to `DIRECT`, from "only these" as rules to the group the
+subscription routes through — the rest of the traffic then follows the
+subscription's rules, which is the one thing a rule cannot say — and from "all
+traffic", where they did nothing, switched off.
 
 ## Subscriptions
 
@@ -337,7 +315,7 @@ order this client tries them is load-bearing:
 
 The panel's document is then kept **verbatim**. `MihomoConfig` overrides only
 what the client must own — the API address and secret, the local port,
-`allow-lan: false` and a loopback bind, the TUN block, and the split rules. A
+`allow-lan: false` and a loopback bind, the TUN block, and the user's own rules. A
 panel that ships a `geosite:category-ru → DIRECT` rule means it, and its tuning
 is usually better than anything generated here.
 
@@ -595,7 +573,7 @@ glass.
 
 | | |
 |---|---|
-| ![Subscription](docs/screenshots/sub.png) | ![Apps](docs/screenshots/apps.png) |
+| ![Subscription](docs/screenshots/sub.png) | ![Connect](docs/screenshots/connect.png) |
 | ![Settings](docs/screenshots/settings.png) | ![Import](docs/screenshots/import.png) |
 
 ## Building
@@ -654,11 +632,11 @@ Xcode and this package builds with the Command Line Tools alone.
 They cover the parts where correctness is not visual: `subscription-userinfo`
 parsing (partial, malformed, absent, zero-means-unlimited), share-link metadata
 across four schemes, URL normalisation (a `file://` or `vless://` link must not
-be rewritten into a plausible `https://` one), config assembly, and all three
-split modes, and every rule kind the UI offers — each one checked in **both**
-positions, as a plain rule and inside a `SUB-RULE` matcher, because mihomo
-accepts different grammars in the two and a rule that only works in one produces
-a config the core refuses.
+be rewritten into a plausible `https://` one), config assembly, and the user's
+own rules — what each kind accepts, where Override and Extend land, the skipping
+of a rule whose group is gone, and the carry-over from the apps screen — with
+every kind, both ways round, loaded by the core itself, since a rule it refuses
+takes the whole config with it.
 
 The last suite runs the **real mihomo binary**: every config shape the app can
 produce goes through `mihomo -t`, and one is started for real so the RESTful API

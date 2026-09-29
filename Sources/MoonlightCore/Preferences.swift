@@ -30,6 +30,8 @@ public final class Preferences: @unchecked Sendable {
         static let splitMode = "splitMode"
         static let splitRules = "splitRules"
         static let routingRules = "routingRules"
+        /// Set by 1.8.0 after its first, partial move of the apps screen's
+        /// rules; only ever removed now.
         static let routingRulesMigrated = "routingRulesMigrated"
         static let launchAtLogin = "launchAtLogin"
         static let menuBarIcon = "menuBarIcon"
@@ -117,21 +119,20 @@ public final class Preferences: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Key.serverDescriptions) }
     }
 
-    public var splitMode: SplitMode {
-        get { SplitMode(rawValue: defaults.string(forKey: Key.splitMode) ?? "") ?? .all }
-        set { defaults.set(newValue.rawValue, forKey: Key.splitMode) }
+    /// What the apps screen of versions before 1.9 left behind — its split
+    /// mode and its rules — or nil once there is nothing.
+    public var legacySplit: (mode: String, rules: [LegacySplitRule])? {
+        let mode = defaults.string(forKey: Key.splitMode)
+        let data = defaults.data(forKey: Key.splitRules)
+        guard mode != nil || data != nil else { return nil }
+        let rules = data.flatMap { try? JSONDecoder().decode([LegacySplitRule].self, from: $0) } ?? []
+        return (mode ?? "all", rules)
     }
 
-    /// Every split rule — the ones the app list generated and the hand-written
-    /// ones, in one list, because they are the same thing to the core.
-    public var splitRules: [SplitRule] {
-        get {
-            guard let data = defaults.data(forKey: Key.splitRules) else { return [] }
-            return (try? JSONDecoder().decode([SplitRule].self, from: data)) ?? []
-        }
-        set {
-            defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.splitRules)
-        }
+    public func forgetLegacySplit() {
+        defaults.removeObject(forKey: Key.splitMode)
+        defaults.removeObject(forKey: Key.splitRules)
+        defaults.removeObject(forKey: Key.routingRulesMigrated)
     }
 
     /// The user's own routing rules, in order. Kept here rather than in the
@@ -144,13 +145,6 @@ public final class Preferences: @unchecked Sendable {
         set {
             defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.routingRules)
         }
-    }
-
-    /// Whether the hand-written split rules of an earlier version have been
-    /// moved into ``routingRules``.
-    public var routingRulesMigrated: Bool {
-        get { defaults.bool(forKey: Key.routingRulesMigrated) }
-        set { defaults.set(newValue, forKey: Key.routingRulesMigrated) }
     }
 
     public var launchAtLogin: Bool {

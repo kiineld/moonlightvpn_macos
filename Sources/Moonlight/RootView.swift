@@ -3,7 +3,7 @@ import MoonlightDesign
 import MoonlightCore
 
 enum Page: Hashable {
-    case connect, subscription, apps, rules, settings, importSubscription, logs, connections
+    case connect, subscription, rules, settings, importSubscription, logs, connections
 }
 
 struct RootView: View {
@@ -18,7 +18,7 @@ struct RootView: View {
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
     /// `scripts/screenshots.sh`, which cannot click without accessibility
     /// permission, and is inert when unset.
-    @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "apps": return .apps; case "rules": return .rules; case "settings": return .settings; case "import": return .importSubscription; case "logs": return .logs; case "connections": return .connections; default: return .connect } }()
+    @State private var page: Page = { switch ProcessInfo.processInfo.environment["ML_PAGE"] ?? "" { case "sub": return .subscription; case "rules": return .rules; case "settings": return .settings; case "import": return .importSubscription; case "logs": return .logs; case "connections": return .connections; default: return .connect } }()
 
     /// The gap between the floating sidebar and the window's edges.
     static let gutter: CGFloat = 8
@@ -75,7 +75,6 @@ struct RootView: View {
                 switch page {
                 case .connect: ConnectScreen(page: $page)
                 case .subscription: SubscriptionScreen(page: $page)
-                case .apps: AppsScreen(page: $page)
                 case .rules: RulesScreen(page: $page)
                 case .settings: SettingsScreen(page: $page)
                 case .importSubscription: ImportScreen(page: $page)
@@ -151,7 +150,6 @@ private struct Sidebar: View {
     private static let pages: [(icon: Icon, title: L.Key, page: Page)] = [
         (.power, .navConnect, .connect),
         (.sparkles, .navSubscription, .subscription),
-        (.layers, .navApps, .apps),
         (.route, .navRules, .rules),
         (.activity, .navConnections, .connections),
         (.settings, .navSettings, .settings),
@@ -163,10 +161,9 @@ private struct Sidebar: View {
         switch page {
         case .connect: return 0
         case .subscription, .importSubscription: return 1
-        case .apps: return 2
-        case .rules: return 3
-        case .connections: return 4
-        case .settings, .logs: return 5
+        case .rules: return 2
+        case .connections: return 3
+        case .settings, .logs: return 4
         }
     }
 
@@ -589,7 +586,6 @@ private struct PageHeader: View {
         switch page {
         case .connect: return .titleConnect
         case .subscription: return .titleSubscription
-        case .apps: return .titleApps
         case .rules: return .titleRules
         case .settings: return .titleSettings
         case .importSubscription: return .titleImport
@@ -602,7 +598,6 @@ private struct PageHeader: View {
         switch page {
         case .connect: return .subtitleConnect
         case .subscription: return .subtitleSubscription
-        case .apps: return .subtitleApps
         case .rules: return .subtitleRules
         case .settings: return .subtitleSettings
         case .importSubscription: return .subtitleImport

@@ -79,25 +79,36 @@ func routingRuleTests() {
           - GEOSITE,category-ru,DIRECT
           - MATCH,Панель
         """
-        func built(_ split: SplitMode, _ splitRules: [SplitRule]) -> [String] {
-            let yaml = (try? MihomoConfig.build(panelYAML: panel, overrides: MihomoConfig.Overrides(
-                secret: "s", splitMode: split, splitRules: splitRules,
-                routingRules: [rule(.domainSuffix, "own.com", "REJECT"),
-                               rule(.domainSuffix, "late.com", "Панель", .extend)],
-                dataDirectory: "/tmp"))) ?? ""
-            return MihomoConfig.routingInputs(panelYAML: yaml).rules
-        }
-        let all = built(.all, [])
-        Check.equal(all.first, "DOMAIN-SUFFIX,own.com,REJECT", "override comes first")
-        Check.equal(all.suffix(2).first, "DOMAIN-SUFFIX,late.com,Панель", "extend sits before MATCH")
+        let yaml = (try? MihomoConfig.build(panelYAML: panel, overrides: MihomoConfig.Overrides(
+            secret: "s",
+            routingRules: [rule(.domainSuffix, "own.com", "REJECT"),
+                           rule(.domainSuffix, "late.com", "Панель", .extend)],
+            dataDirectory: "/tmp"))) ?? ""
+        let rules = MihomoConfig.routingInputs(panelYAML: yaml).rules
+        Check.equal(rules, ["DOMAIN-SUFFIX,own.com,REJECT", "GEOSITE,category-ru,DIRECT",
+                            "DOMAIN-SUFFIX,late.com,Панель", "MATCH,Панель"],
+                    "override first, the subscription's rules, extend, its catch-all")
+    }
 
-        let except = built(.except, [SplitRule(kind: .processName, value: "Telegram")])
-        Check.equal(Array(except.prefix(2)), ["DOMAIN-SUFFIX,own.com,REJECT", "PROCESS-NAME,Telegram,DIRECT"],
-                    "overrides come before the split rules too")
+    Check.suite("Own rules · carried over from the apps screen") {
+        let legacy = [
+            LegacySplitRule(kind: "PROCESS-NAME", value: "Telegram", appExecutable: "Telegram"),
+            LegacySplitRule(kind: "DOMAIN-SUFFIX", value: "bank.ru", enabled: false),
+            LegacySplitRule(kind: "NOT-A-KIND", value: "x"),
+            LegacySplitRule(kind: "DOMAIN", value: "  "),
+        ]
+        let except = RoutingRule.carriedOver(from: legacy, mode: "except", group: "Панель")
+        Check.equal(except.map(\.line), ["PROCESS-NAME,Telegram,DIRECT", "DOMAIN-SUFFIX,bank.ru,DIRECT"],
+                    "'all except' went around the tunnel: rules to DIRECT; unknown or blank dropped")
+        Check.equal(except.map(\.enabled), [true, false], "a switched-off rule stays off")
+        Check.isTrue(except.allSatisfy { $0.priority == .override }, "ahead of the subscription's rules, as before")
 
-        let only = built(.only, [SplitRule(kind: .processName, value: "Telegram")])
-        Check.equal(only.first, "DOMAIN-SUFFIX,own.com,REJECT", "in 'only' mode too")
-        Check.equal(only.last, "MATCH,DIRECT", "the split's catch-all still ends the list")
+        let only = RoutingRule.carriedOver(from: legacy, mode: "only", group: "Панель")
+        Check.equal(only.first?.line, "PROCESS-NAME,Telegram,Панель",
+                    "'only these' went through the tunnel: rules to its group")
+
+        let all = RoutingRule.carriedOver(from: legacy, mode: "all", group: "Панель")
+        Check.isTrue(all.allSatisfy { !$0.enabled }, "'all traffic' ignored them: they arrive switched off")
     }
 
     Check.suite("Own rules · the subscription's rules, read") {

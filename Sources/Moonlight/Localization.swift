@@ -16,11 +16,10 @@ public enum L {
 
     public enum Key {
         // Navigation and page headers
-        case navConnect, navSubscription, navApps, navSettings
+        case navConnect, navSubscription, navSettings
         case collapseSidebar, expandSidebar, quit
         case titleConnect, subtitleConnect
         case titleSubscription, subtitleSubscription
-        case titleApps, subtitleApps
         case titleSettings, subtitleSettings
         case titleImport, subtitleImport
 
@@ -52,18 +51,14 @@ public enum L {
         case backToSubscription, importDone, importDoneSubtitle, connectNow
         case removeSubscription
 
-        // Apps / split tunnelling
-        case splitAll, splitOnly, splitExcept
-        case splitHintAll, splitHintOnly, splitHintExcept
-        case splitNeedsTun, splitNeedsTunAction, splitSummaryAll, splitSummaryCount
-        case searchApps, runningNow, installedApps, noApps, rules, rulesHelp
+        // App picker and search fields
+        case searchApps, installedApps
 
         // Settings
         case sectionSystem, sectionApp, sectionSupport, sectionTunnel
         case launchAtLogin, launchAtLoginSub
         case menuBarIcon, menuBarIconSub
         case autoConnect, autoConnectSub
-        case splitTunnelling
         case language, notifications, notificationsSub
         case ourChannel, ourChannelSub, support, supportSub
         case version, checkUpdates, keysStayHere
@@ -104,7 +99,6 @@ public enum L {
         case rulesUnsaved, rulesReset, rulesApply, rulesApplying, rulesApplyFailed
         case rulesEmpty, rulesEmptyHint, rulesProfileEmpty, rulesModeNote
         case invalidEmpty, invalidComma, invalidRegex, invalidPort, invalidCIDR, invalidASN, invalidNetwork
-        case appsRulesLink, appsRulesLinkSub
         // Issues
         case issueInvalidLink, issueNoSubscription, issueOffline, issueServerUnavailable
         case issueErrorCode, issueTryLater, issueLinkRejected, issueEmpty, issueNoUsable
@@ -118,7 +112,6 @@ public enum L {
             switch self {
             case .navConnect: return "Подключение"
             case .navSubscription: return "Подписка"
-            case .navApps: return "Приложения"
             case .navSettings: return "Настройки"
             case .collapseSidebar: return "Свернуть меню"
             case .expandSidebar: return "Развернуть меню"
@@ -127,8 +120,6 @@ public enum L {
             case .subtitleConnect: return "Выберите узел и включите туннель"
             case .titleSubscription: return "Подписка"
             case .subtitleSubscription: return "Тариф и трафик"
-            case .titleApps: return "Приложения"
-            case .subtitleApps: return "Какой трафик идёт через туннель"
             case .titleSettings: return "Настройки"
             case .subtitleSettings: return "Система, приложение и поддержка"
             case .titleImport: return "Добавить подписку"
@@ -202,24 +193,8 @@ public enum L {
             case .importDoneSubtitle: return "Готово к подключению"
             case .connectNow: return "Подключиться"
             case .removeSubscription: return "Удалить подписку"
-
-            case .splitAll: return "Весь трафик"
-            case .splitOnly: return "Только эти"
-            case .splitExcept: return "Кроме этих"
-            case .splitHintAll: return "Через туннель идёт весь трафик компьютера."
-            case .splitHintOnly: return "Через туннель пойдут только отмеченные программы — остальные напрямую."
-            case .splitHintExcept: return "Отмеченные программы пойдут напрямую, весь остальной трафик — через туннель."
-            case .splitNeedsTun:
-                return "Правила PROCESS-* не работают: системный прокси не показывает ядру, какая программа открыла соединение. Остальные правила действуют."
-            case .splitNeedsTunAction: return "Включить TUN"
-            case .splitSummaryAll: return "Весь трафик"
-            case .splitSummaryCount: return "прогр."
             case .searchApps: return "Поиск"
-            case .runningNow: return "Запущено"
             case .installedApps: return "ПРОГРАММЫ"
-            case .noApps: return "Ничего не найдено"
-            case .rules: return "ПРАВИЛА"
-            case .rulesHelp: return "Правила по доменам, адресам и портам работают в обоих режимах. PROCESS-* требуют TUN."
 
             case .sectionSystem: return "СИСТЕМА"
             case .sectionApp: return "ПРИЛОЖЕНИЕ"
@@ -231,7 +206,6 @@ public enum L {
             case .menuBarIconSub: return "Управление подключением из строки меню"
             case .autoConnect: return "Подключаться автоматически"
             case .autoConnectSub: return "Сразу после запуска клиента"
-            case .splitTunnelling: return "Раздельное туннелирование"
             case .language: return "Язык"
             case .notifications: return "Уведомления"
             case .notificationsSub: return "Об окончании подписки и трафика"
@@ -381,8 +355,6 @@ public enum L {
             case .invalidCIDR: return "Нужна подсеть, например 192.168.1.0/24"
             case .invalidASN: return "Только номер AS, например 13335"
             case .invalidNetwork: return "tcp или udp"
-            case .appsRulesLink: return "Правила для сайтов, адресов и портов"
-            case .appsRulesLinkSub: return "Пустить мимо VPN, заблокировать или направить через группу"
             case .issueInvalidLink: return "Это не похоже на ссылку подписки"
             case .issueNoSubscription: return "Сначала добавьте подписку"
             case .issueOffline: return "Нет подключения к интернету"
@@ -415,7 +387,6 @@ public enum L {
             switch self {
             case .navConnect: return "Connection"
             case .navSubscription: return "Subscription"
-            case .navApps: return "Apps"
             case .navSettings: return "Settings"
             case .collapseSidebar: return "Collapse the sidebar"
             case .expandSidebar: return "Expand the sidebar"
@@ -424,8 +395,6 @@ public enum L {
             case .subtitleConnect: return "Pick a node and switch the tunnel on"
             case .titleSubscription: return "Subscription"
             case .subtitleSubscription: return "Plan and traffic"
-            case .titleApps: return "Apps"
-            case .subtitleApps: return "Which traffic goes through the tunnel"
             case .titleSettings: return "Settings"
             case .subtitleSettings: return "System, app and support"
             case .titleImport: return "Add a subscription"
@@ -499,24 +468,8 @@ public enum L {
             case .importDoneSubtitle: return "Ready to connect"
             case .connectNow: return "Connect"
             case .removeSubscription: return "Remove subscription"
-
-            case .splitAll: return "All traffic"
-            case .splitOnly: return "Only these"
-            case .splitExcept: return "Except these"
-            case .splitHintAll: return "Every connection on this computer goes through the tunnel."
-            case .splitHintOnly: return "Only the selected apps go through the tunnel — everything else goes direct."
-            case .splitHintExcept: return "The selected apps go direct; all other traffic goes through the tunnel."
-            case .splitNeedsTun:
-                return "PROCESS-* rules do not match: a system proxy never tells the core which app opened a connection. The other rules still apply."
-            case .splitNeedsTunAction: return "Switch to TUN"
-            case .splitSummaryAll: return "All traffic"
-            case .splitSummaryCount: return "apps"
             case .searchApps: return "Search"
-            case .runningNow: return "Running"
             case .installedApps: return "APPS"
-            case .noApps: return "Nothing found"
-            case .rules: return "RULES"
-            case .rulesHelp: return "Domain, address and port rules work in both modes. PROCESS-* rules need TUN."
 
             case .sectionSystem: return "SYSTEM"
             case .sectionApp: return "APP"
@@ -528,7 +481,6 @@ public enum L {
             case .menuBarIconSub: return "Control the connection from the menu bar"
             case .autoConnect: return "Connect automatically"
             case .autoConnectSub: return "Right after the client starts"
-            case .splitTunnelling: return "Split tunnelling"
             case .language: return "Language"
             case .notifications: return "Notifications"
             case .notificationsSub: return "When the plan or traffic runs out"
@@ -678,8 +630,6 @@ public enum L {
             case .invalidCIDR: return "A subnet, e.g. 192.168.1.0/24"
             case .invalidASN: return "The AS number alone, e.g. 13335"
             case .invalidNetwork: return "tcp or udp"
-            case .appsRulesLink: return "Rules for sites, addresses and ports"
-            case .appsRulesLinkSub: return "Send around the VPN, block, or route through a group"
             case .issueInvalidLink: return "This doesn't look like a subscription link"
             case .issueNoSubscription: return "Add a subscription first"
             case .issueOffline: return "No internet connection"

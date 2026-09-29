@@ -13,7 +13,6 @@ import Yams
 /// - `allow-lan: false` and a loopback bind — this is a single-machine client,
 ///   and an unbound listener is an open proxy on the network
 /// - the TUN block, when the tunnel runs in TUN mode
-/// - split-tunnel rules, prepended (see ``applySplit(rules:mode:splitRules:selector:root:)``)
 /// - the user's own rules, around the panel's (see ``placeOwnRules(_:around:targets:)``)
 public struct MihomoConfig {
 
@@ -24,10 +23,6 @@ public struct MihomoConfig {
         public var mode: TunnelMode
         /// The core's `mode`: rules, everything through the server, or nothing.
         public var routingMode: RoutingMode
-        public var splitMode: SplitMode
-        /// Every rule the split screen contributes — the app toggles and the
-        /// hand-written ones alike.
-        public var splitRules: [SplitRule]
         /// The user's own routing rules, kept by the app.
         public var routingRules: [RoutingRule]
         public var logLevel: String
@@ -40,8 +35,6 @@ public struct MihomoConfig {
             mixedPort: Int = 7897,
             mode: TunnelMode = .systemProxy,
             routingMode: RoutingMode = .rule,
-            splitMode: SplitMode = .all,
-            splitRules: [SplitRule] = [],
             routingRules: [RoutingRule] = [],
             logLevel: String = "warning",
             dataDirectory: String
@@ -51,16 +44,11 @@ public struct MihomoConfig {
             self.mixedPort = mixedPort
             self.mode = mode
             self.routingMode = routingMode
-            self.splitMode = splitMode
-            self.splitRules = splitRules
             self.routingRules = routingRules
             self.logLevel = logLevel
             self.dataDirectory = dataDirectory
         }
     }
-
-    /// The sub-rule name the `.only` split mode delegates the panel's routing to.
-    static let panelSubRule = "moonlight-panel"
 
     public enum Failure: LocalizedError {
         case notAMapping
@@ -99,7 +87,7 @@ public struct MihomoConfig {
             root.removeValue(forKey: key)
         }
         // Always on. It costs a `libproc` lookup per connection, which is cheap,
-        // and two things depend on it: `PROCESS-*` split rules, and the
+        // and two things depend on it: `PROCESS-*` rules, and the
         // connections screen — whose entire question is *which program* is going
         // where. Switching it off when no process rule happened to be configured
         // left that screen showing every connection as "—".
@@ -123,13 +111,7 @@ public struct MihomoConfig {
             .union(groups.compactMap { $0["name"] as? String })
             .union(proxies.compactMap { $0["name"] as? String })
         let own = placeOwnRules(overrides.routingRules, around: rules, targets: targets)
-        root["rules"] = own.before + applySplit(
-            rules: own.rules,
-            mode: overrides.splitMode,
-            splitRules: overrides.splitRules,
-            selector: primarySelectorName(groups: groups, rules: rules),
-            root: &root
-        )
+        root["rules"] = own.before + own.rules
 
         // ── TUN ─────────────────────────────────────────────────────────────
         if overrides.mode == .tun {
@@ -215,65 +197,13 @@ public struct MihomoConfig {
         return groups.first?["name"] as? String ?? defaultSelector
     }
 
-    // MARK: - Split tunnelling
-
-    /// Composes the split mode with the panel's own routing.
-    ///
-    /// The three modes are not symmetric, because preserving the panel's rules
-    /// means something different in each:
-    ///
-    /// - **all** — the panel's rules, untouched.
-    /// - **except** — the split rules are prepended pointing at `DIRECT`. This
-    ///   composes cleanly: what they match never reaches the panel's rules, and
-    ///   everything else sees them exactly as written.
-    /// - **only** — what the split rules match is handed to the panel's rules
-    ///   through a `SUB-RULE`, and everything else falls to `MATCH,DIRECT`.
-    ///   Pointing them straight at the selector instead would work, but it would
-    ///   force *all* of that traffic through the node — including the hosts the
-    ///   panel deliberately routes direct — so a selected browser would lose the
-    ///   panel's split for local sites.
-    ///
-    /// An empty selection in `.only` mode falls back to tunnelling everything:
-    /// an empty allow-list routes nothing at all, which reads as a broken VPN
-    /// rather than as a configuration choice.
-    public static func applySplit(
-        rules: [String],
-        mode: SplitMode,
-        splitRules: [SplitRule],
-        selector: String,
-        root: inout [String: Any]
-    ) -> [String] {
-        let active = splitRules.filter {
-            $0.enabled && !$0.value.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-
-        switch mode {
-        case .all:
-            return rules
-
-        case .except:
-            guard !active.isEmpty else { return rules }
-            return active.map { $0.line(target: "DIRECT") } + rules
-
-        case .only:
-            guard !active.isEmpty else { return rules }
-            var subRules = root["sub-rules"] as? [String: Any] ?? [:]
-            subRules[panelSubRule] = rules
-            root["sub-rules"] = subRules
-            return active.map { "SUB-RULE,\($0.matcher()),\(panelSubRule)" }
-                + ["MATCH,DIRECT"]
-        }
-    }
-
     // MARK: - The user's own rules
 
     /// Places the user's own rules around the panel's.
     ///
-    /// Overrides go before everything — before the split rules too, since they
-    /// are the user's most specific wish. Extensions go after the panel's rules
+    /// Overrides go before everything. Extensions go after the panel's rules
     /// but *before* its catch-all `MATCH`: appended after it, as the grammar
-    /// would literally have it, they could never match anything. In the
-    /// `.only` split mode they travel with the panel's rules into the sub-rule.
+    /// would literally have it, they could never match anything.
     ///
     /// A rule is left out rather than written when it is switched off, when
     /// its value no longer validates, or when it points at a group the

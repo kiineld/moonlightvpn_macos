@@ -1,6 +1,6 @@
 import AppKit
 
-/// Lists installed applications for the split-tunnel screen.
+/// Lists applications for the process rules' app picker.
 ///
 /// The identity that matters is the **executable name**, because that is what
 /// mihomo's `PROCESS-NAME` rules match — the core sees a process, not a bundle.
@@ -44,6 +44,18 @@ public enum AppInventory {
                   let url = application.executableURL else { return nil }
             return url.lastPathComponent
         })
+    }
+
+    /// Every regular app running right now, wherever its bundle lives — one
+    /// started from Downloads or a disk image is not in any folder
+    /// ``installed()`` looks through.
+    public static func runningApps() -> [AppEntry] {
+        var seen = Set<String>()
+        return NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { $0.bundleURL.flatMap { describe($0.path) } }
+            .filter { seen.insert($0.executable).inserted }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     /// The `.app` bundle a running executable belongs to.

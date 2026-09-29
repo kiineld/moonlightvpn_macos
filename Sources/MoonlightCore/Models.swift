@@ -210,16 +210,6 @@ public enum RoutingMode: String, Codable, CaseIterable, Sendable {
     case direct
 }
 
-/// Which traffic goes through the tunnel.
-public enum SplitMode: String, Codable, CaseIterable, Sendable {
-    /// Everything.
-    case all
-    /// Only the selected processes; everything else goes direct.
-    case only
-    /// The selected processes go direct; everything else is tunnelled.
-    case except
-}
-
 /// An installed application, addressed by the executable name mihomo's
 /// `PROCESS-NAME` rules match on — not by bundle id, which mihomo never sees.
 public struct AppEntry: Identifiable, Hashable, Codable, Sendable {

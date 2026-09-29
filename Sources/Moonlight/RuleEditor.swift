@@ -22,10 +22,6 @@ struct RuleEditor: View {
     @State private var target: String
     @State private var priority: RoutingRule.Priority
     @State private var invalid: RoutingRule.Invalid?
-    /// Apps to pick a process rule's value from, loaded when a process kind is
-    /// first chosen: scanning /Applications opens every bundle.
-    @State private var apps: [AppEntry] = []
-    @State private var running: Set<String> = []
     @State private var choosingKind = false
     @State private var choosingApp = false
 
@@ -58,7 +54,6 @@ struct RuleEditor: View {
             footer
         }
         .frame(width: 480)
-        .task(id: kind.needsProcessMatching) { await loadAppsIfNeeded() }
     }
 
     // MARK: - Parts
@@ -143,13 +138,10 @@ struct RuleEditor: View {
     }
 
     /// A row in one of the editor's dropdowns.
-    private func listRow(_ title: String, mono: Bool, selected: Bool, icon: NSImage? = nil,
+    private func listRow(_ title: String, mono: Bool, selected: Bool,
                          action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if let icon {
-                    Image(nsImage: icon).resizable().interpolation(.high).frame(width: 18, height: 18)
-                }
                 Text(title)
                     .font(mono ? .mlMono(13, selected ? .semibold : .regular) : .ml(13, selected ? .bold : .medium))
                     .foregroundStyle(selected ? palette.text : palette.text2)
@@ -209,35 +201,12 @@ struct RuleEditor: View {
         .pressIcon()
         .help(L.t(.ruleChooseApp, locale))
         .popover(isPresented: $choosingApp, arrowEdge: .bottom) {
-            let live = apps.filter { running.contains($0.executable) }
-            let rest = apps.filter { !running.contains($0.executable) }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    if apps.isEmpty {
-                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(20)
-                    }
-                    if !live.isEmpty {
-                        sectionLabel(L.t(.ruleRunning, locale).uppercased())
-                        ForEach(live) { app in appRow(app) }
-                    }
-                    if !rest.isEmpty {
-                        sectionLabel(L.t(.installedApps, locale)).padding(.top, live.isEmpty ? 0 : 6)
-                        ForEach(rest) { app in appRow(app) }
-                    }
-                }
-                .padding(8)
+            AppChooser { app in
+                pick(app)
+                choosingApp = false
             }
-            .frame(width: 320, height: 380)
             .environment(\.palette, palette)
             .mlLocale(locale)
-        }
-    }
-
-    private func appRow(_ app: AppEntry) -> some View {
-        listRow(app.name, mono: false, selected: false,
-                icon: NSWorkspace.shared.icon(forFile: app.path)) {
-            pick(app)
-            choosingApp = false
         }
     }
 
@@ -422,10 +391,116 @@ struct RuleEditor: View {
         }
     }
 
-    private func loadAppsIfNeeded() async {
-        guard kind.needsProcessMatching, apps.isEmpty else { return }
-        running = AppInventory.running()
-        let found = await Task.detached(priority: .userInitiated) { AppInventory.installed() }.value
-        apps = found.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+}
+
+/// The apps a process rule can be filled from: what is running, then what is
+/// installed, with a filter.
+///
+/// A view of its own, owning its list and loading it when it opens. The list
+/// used to live in the editor and be drawn in the popover from there; the
+/// popover is a window of its own, never saw the list arrive, and spun for
+/// good. The installed list is kept once read — scanning the application
+/// folders opens every bundle in them.
+private struct AppChooser: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let pick: (AppEntry) -> Void
+
+    @MainActor private static var installedCache: [AppEntry]?
+
+    @State private var running: [AppEntry] = []
+    @State private var installed: [AppEntry]? = AppChooser.installedCache
+    @State private var query = ""
+
+    private func matching(_ apps: [AppEntry]) -> [AppEntry] {
+        let text = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !text.isEmpty else { return apps }
+        return apps.filter { $0.name.lowercased().contains(text) || $0.executable.lowercased().contains(text) }
+    }
+
+    var body: some View {
+        let live = matching(running)
+        let liveNames = Set(running.map(\.executable))
+        let rest = matching((installed ?? []).filter { !liveNames.contains($0.executable) })
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                IconView(.search, size: 14).foregroundStyle(palette.textMuted)
+                TextField(L.t(.searchApps, locale), text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.ml(13))
+                    .foregroundStyle(palette.text)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .mlGlass(.capsule, fallback: palette.surface2)
+            .padding(10)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    if !live.isEmpty {
+                        heading(L.t(.ruleRunning, locale).uppercased())
+                        ForEach(live) { row($0) }
+                    }
+                    if !rest.isEmpty {
+                        heading(L.t(.installedApps, locale)).padding(.top, live.isEmpty ? 0 : 6)
+                        ForEach(rest) { row($0) }
+                    }
+                    if installed == nil {
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(16)
+                    } else if live.isEmpty, rest.isEmpty {
+                        Text(L.t(.nothingFound, locale))
+                            .font(.ml(12.5))
+                            .foregroundStyle(palette.textMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(20)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(width: 320, height: 400)
+        .task {
+            running = AppInventory.runningApps()
+            guard installed == nil else { return }
+            let found = await Task.detached(priority: .userInitiated) { AppInventory.installed() }.value
+            Self.installedCache = found
+            installed = found
+        }
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text)
+            .font(.ml(10.5, .heavy))
+            .tracking(0.08 * 10.5)
+            .foregroundStyle(palette.textMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+    }
+
+    private func row(_ app: AppEntry) -> some View {
+        Button {
+            pick(app)
+        } label: {
+            HStack(spacing: 10) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 20, height: 20)
+                Text(app.name)
+                    .font(.ml(13, .medium))
+                    .foregroundStyle(palette.text)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(app.executable)
+                    .font(.mlMono(11))
+                    .foregroundStyle(palette.textMuted)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .contentShape(Rectangle())
+        }
+        .pressCard()
     }
 }

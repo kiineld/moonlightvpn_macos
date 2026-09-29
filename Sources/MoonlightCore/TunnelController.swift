@@ -135,7 +135,7 @@ public final class TunnelController: ObservableObject {
         }
 
         recoverFromCrash()
-        migrateSplitRules()
+        retireSplitTunnelling()
 
         // Warm the core as soon as there is a subscription, so the first latency
         // pass is instant rather than paying for a cold start. The redactions
@@ -1016,58 +1016,33 @@ public final class TunnelController: ObservableObject {
         var rules: [String]
     }
 
-    /// Moves the hand-written split rules of earlier versions into the user's
-    /// own rules, once.
-    ///
-    /// They lived on the apps screen, beside the app switches, and only ever
-    /// went one of two ways: around the tunnel in "all except" mode, or
-    /// through it in "only these". As rules of the user's own they keep doing
-    /// that — the first as rules to `DIRECT`, the second to the group the
-    /// subscription routes through — and can now point anywhere. In "all" mode
-    /// they did nothing, so they arrive switched off.
-    private func migrateSplitRules() {
-        guard !preferences.routingRulesMigrated else { return }
-        preferences.routingRulesMigrated = true
-        let split = preferences.splitRules
-        let custom = split.filter { !$0.isFromAppList }
-        guard !custom.isEmpty else { return }
+    /// Carries over what was set on the apps screen of earlier versions — the
+    /// app switches, the rules beside them and the split mode — into the
+    /// user's own rules, once, then forgets it. See ``LegacySplitRule``.
+    private func retireSplitTunnelling() {
+        guard let legacy = preferences.legacySplit else { return }
+        defer { preferences.forgetLegacySplit() }
+        guard !legacy.rules.isEmpty else { return }
 
-        let mode = preferences.splitMode
-        var target = RoutingRule.direct
-        if mode == .only {
+        var group = MihomoConfig.defaultSelector
+        if legacy.mode == "only" {
             let root = (try? loadPanelRoot()) ?? [:]
-            target = MihomoConfig.primarySelectorName(
+            group = MihomoConfig.primarySelectorName(
                 groups: root["proxy-groups"] as? [[String: Any]] ?? [],
                 rules: root["rules"] as? [String] ?? []
             )
         }
-        let moved = custom.compactMap { rule -> RoutingRule? in
-            guard let kind = RoutingRule.Kind(rawValue: rule.kind.rawValue) else { return nil }
-            return RoutingRule(kind: kind, value: rule.value, target: target,
-                               priority: .override, enabled: rule.enabled && mode != .all)
-        }
-        preferences.routingRules += moved
-        preferences.splitRules = split.filter(\.isFromAppList)
-        LogStore.shared.client("Moved \(moved.count) split rule(s) to the rules screen")
+        let existing = preferences.routingRules
+        let moved = RoutingRule.carriedOver(from: legacy.rules, mode: legacy.mode, group: group)
+            .filter { new in !existing.contains { $0.kind == new.kind && $0.value == new.value } }
+        preferences.routingRules = existing + moved
+        LogStore.shared.client("Moved \(moved.count) rule(s) from the apps screen to the rules page")
     }
 
     private func loadPanelRoot() throws -> [String: Any] {
         let yaml = try String(contentsOf: panelURL, encoding: .utf8)
         return try Yams.load(yaml: yaml) as? [String: Any] ?? [:]
     }
-
-    public func setSplitMode(_ mode: SplitMode) async {
-        preferences.splitMode = mode
-        await reapplyRouting()
-    }
-
-    public func setSplitRules(_ rules: [SplitRule]) async {
-        preferences.splitRules = rules
-        await reapplyRouting()
-    }
-
-    public var splitMode: SplitMode { preferences.splitMode }
-    public var splitRules: [SplitRule] { preferences.splitRules }
 
     private func reapplyRouting() async {
         guard state.isConnected else { return }
@@ -1181,17 +1156,6 @@ public final class TunnelController: ObservableObject {
             mixedPort: preferences.mixedPort,
             mode: mode,
             routingMode: preferences.routingMode,
-            // Per-process rules need an interface to route; in system-proxy mode
-            // mihomo never sees the process, so the screen is honest about being
-            // inert rather than silently doing nothing.
-            splitMode: preferences.splitMode,
-            // Process rules need an interface to route: under a system proxy the
-            // core never sees the process, so they would be written and silently
-            // never match. Domain and address rules work in both modes, so only
-            // the process ones are dropped.
-            splitRules: mode == .tun
-                ? preferences.splitRules
-                : preferences.splitRules.filter { !$0.kind.needsProcessMatching },
             routingRules: preferences.routingRules,
             dataDirectory: support.appendingPathComponent("core").path
         )

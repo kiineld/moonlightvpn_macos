@@ -31,7 +31,7 @@ for w in list where (w[kCGWindowOwnerName as String] as? String) == "Moonlight"
 SWIFT
 swiftc -O /tmp/moonlight-winid.swift -o /tmp/moonlight-winid
 
-for page in connect sub apps settings import; do
+for page in connect sub rules settings import; do
   pkill -f "Moonlight.app/Contents/MacOS/Moonlight" 2>/dev/null || true
   sleep 1
   ML_PAGE="$page" "$APP/Contents/MacOS/Moonlight" >/dev/null 2>&1 &

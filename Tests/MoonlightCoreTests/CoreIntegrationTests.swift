@@ -45,19 +45,11 @@ func coreIntegrationTests() {
     try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
     let process = MihomoProcess(binary: core, dataDirectory: home)
 
-    func overrides(_ mode: TunnelMode, _ split: SplitMode, _ rules: [SplitRule]) -> MihomoConfig.Overrides {
+    func overrides(_ mode: TunnelMode, _ rules: [RoutingRule] = []) -> MihomoConfig.Overrides {
         MihomoConfig.Overrides(
             controllerPort: controllerPort, secret: secret, mixedPort: 17_897,
-            mode: mode, splitMode: split, splitRules: rules,
-            dataDirectory: home.path
+            mode: mode, routingRules: rules, dataDirectory: home.path
         )
-    }
-
-    // One of every kind the UI offers, so the core is the thing that says
-    // whether the grammar is right — in both rule positions, since `except`
-    // writes plain rules and `only` writes SUB-RULE matchers.
-    let everyKind = SplitRule.Kind.allCases.map {
-        SplitRule(kind: $0, value: $0.placeholder)
     }
 
     // And every kind of the user's own rules, both ways round, pointed at each
@@ -72,21 +64,10 @@ func coreIntegrationTests() {
         // TUN is validated but never started: creating a utun interface needs
         // root, and a test suite must not ask for it.
         let shapes: [(String, MihomoConfig.Overrides)] = [
-            ("system proxy", overrides(.systemProxy, .all, [])),
-            ("tun", overrides(.tun, .all, [])),
-            ("tun + only", overrides(.tun, .only, everyKind)),
-            ("tun + except", overrides(.tun, .except, everyKind)),
-            ("proxy + except", overrides(.systemProxy, .except, everyKind)),
-            ("own rules", {
-                var o = overrides(.systemProxy, .all, [])
-                o.routingRules = everyOwnRule
-                return o
-            }()),
-            ("tun + only + own rules", {
-                var o = overrides(.tun, .only, everyKind)
-                o.routingRules = everyOwnRule
-                return o
-            }()),
+            ("system proxy", overrides(.systemProxy)),
+            ("tun", overrides(.tun)),
+            ("own rules", overrides(.systemProxy, everyOwnRule)),
+            ("tun + own rules", overrides(.tun, everyOwnRule)),
         ]
         for (name, override) in shapes {
             let path = workspace.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "-")).yaml")
@@ -104,7 +85,7 @@ func coreIntegrationTests() {
     Check.suite("Core · RESTful API") {
         let path = process.configURL
         do {
-            let yaml = try MihomoConfig.build(panelYAML: panel, overrides: overrides(.systemProxy, .all, []))
+            let yaml = try MihomoConfig.build(panelYAML: panel, overrides: overrides(.systemProxy))
             try yaml.write(to: path, atomically: true, encoding: .utf8)
             try process.start(configPath: path)
         } catch {
