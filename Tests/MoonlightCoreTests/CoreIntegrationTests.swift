@@ -60,6 +60,14 @@ func coreIntegrationTests() {
         SplitRule(kind: $0, value: $0.placeholder)
     }
 
+    // And every kind of the user's own rules, both ways round, pointed at each
+    // kind of target.
+    let everyOwnRule = RoutingRule.Kind.allCases.enumerated().map { index, kind in
+        RoutingRule(kind: kind, value: kind.placeholder,
+                    target: ["DIRECT", "REJECT", "Панель"][index % 3],
+                    priority: index.isMultiple(of: 2) ? .override : .extend)
+    }
+
     Check.suite("Core · every generated config loads") {
         // TUN is validated but never started: creating a utun interface needs
         // root, and a test suite must not ask for it.
@@ -69,6 +77,16 @@ func coreIntegrationTests() {
             ("tun + only", overrides(.tun, .only, everyKind)),
             ("tun + except", overrides(.tun, .except, everyKind)),
             ("proxy + except", overrides(.systemProxy, .except, everyKind)),
+            ("own rules", {
+                var o = overrides(.systemProxy, .all, [])
+                o.routingRules = everyOwnRule
+                return o
+            }()),
+            ("tun + only + own rules", {
+                var o = overrides(.tun, .only, everyKind)
+                o.routingRules = everyOwnRule
+                return o
+            }()),
         ]
         for (name, override) in shapes {
             let path = workspace.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "-")).yaml")

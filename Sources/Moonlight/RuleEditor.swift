@@ -1,0 +1,431 @@
+import SwiftUI
+import MoonlightDesign
+import MoonlightCore
+
+/// Adding or editing one rule of the user's own: what it matches, where it
+/// sends it, and whether it goes before or after the subscription's rules.
+///
+/// The value is checked before the rule is kept — a value the core refuses
+/// would take the whole config down, not just the rule.
+struct RuleEditor: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let original: RoutingRule?
+    /// The subscription's groups, in its order.
+    let groups: [String]
+    let tunnelMode: TunnelMode
+    let save: (RoutingRule) -> Void
+    let cancel: () -> Void
+
+    @State private var kind: RoutingRule.Kind
+    @State private var value: String
+    @State private var target: String
+    @State private var priority: RoutingRule.Priority
+    @State private var invalid: RoutingRule.Invalid?
+    /// Apps to pick a process rule's value from, loaded when a process kind is
+    /// first chosen: scanning /Applications opens every bundle.
+    @State private var apps: [AppEntry] = []
+    @State private var running: Set<String> = []
+    @State private var choosingKind = false
+    @State private var choosingApp = false
+
+    init(original: RoutingRule?, groups: [String], tunnelMode: TunnelMode,
+         save: @escaping (RoutingRule) -> Void, cancel: @escaping () -> Void) {
+        self.original = original
+        self.groups = groups
+        self.tunnelMode = tunnelMode
+        self.save = save
+        self.cancel = cancel
+        _kind = State(initialValue: original?.kind ?? .domainSuffix)
+        _value = State(initialValue: original?.value ?? "")
+        _target = State(initialValue: original?.target ?? RoutingRule.direct)
+        _priority = State(initialValue: original?.priority ?? .override)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            palette.hairlineSoft.frame(height: 1)
+            VStack(alignment: .leading, spacing: 14) {
+                field(L.t(.ruleType, locale)) { typePicker }
+                field(L.t(.ruleValue, locale)) { valueField }
+                field(L.t(.ruleTarget, locale)) { targetList }
+                field(L.t(.rulePriority, locale)) { priorityChoice }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+            palette.hairlineSoft.frame(height: 1)
+            footer
+        }
+        .frame(width: 480)
+        .task(id: kind.needsProcessMatching) { await loadAppsIfNeeded() }
+    }
+
+    // MARK: - Parts
+
+    private var header: some View {
+        HStack {
+            Text(L.t(original == nil ? .rulesAdd : .rulesEdit, locale))
+                .font(.mlDisplay(17))
+                .tracking(TypeScale.trackDisplay * 17)
+                .foregroundStyle(palette.text)
+            Spacer()
+            Button(action: cancel) {
+                IconView(.x, size: 16)
+                    .foregroundStyle(palette.textMuted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .pressIcon()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+    }
+
+    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.ml(12.5, .bold))
+                .foregroundStyle(palette.text2)
+            content()
+        }
+    }
+
+    /// A popover rather than a `Menu`: macOS draws a menu's label as plain
+    /// text whatever view it is given, so the field lost its look.
+    private var typePicker: some View {
+        Button {
+            choosingKind.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Text(kind.rawValue)
+                    .font(.mlMono(13, .semibold))
+                    .foregroundStyle(palette.text)
+                if kind.needsProcessMatching {
+                    Text("TUN")
+                        .font(.ml(9.5, .heavy))
+                        .foregroundStyle(tunnelMode == .tun ? palette.textMuted : palette.warning)
+                        .help(L.t(.ruleTunOnly, locale))
+                }
+                Spacer(minLength: 8)
+                IconView(.chevronRight, size: 13, strokeWidth: 2.4)
+                    .rotationEffect(.degrees(choosingKind ? -90 : 90))
+                    .foregroundStyle(palette.textMuted)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .mlGlass(.rounded(Radii.field), fallback: palette.surface2)
+            .contentShape(Rectangle())
+        }
+        .pressCard()
+        .animation(Motion.paint, value: choosingKind)
+        .popover(isPresented: $choosingKind, arrowEdge: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(RoutingRule.Kind.Family.allCases, id: \.self) { family in
+                        sectionLabel(L.family(family, locale))
+                            .padding(.top, family == .domain ? 0 : 6)
+                        ForEach(RoutingRule.Kind.allCases.filter { $0.family == family }, id: \.self) { option in
+                            listRow(option.rawValue, mono: true, selected: option == kind) {
+                                kind = option
+                                invalid = nil
+                                choosingKind = false
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+            }
+            .frame(width: 340, height: 360)
+            .environment(\.palette, palette)
+            .mlLocale(locale)
+        }
+    }
+
+    /// A row in one of the editor's dropdowns.
+    private func listRow(_ title: String, mono: Bool, selected: Bool, icon: NSImage? = nil,
+                         action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if let icon {
+                    Image(nsImage: icon).resizable().interpolation(.high).frame(width: 18, height: 18)
+                }
+                Text(title)
+                    .font(mono ? .mlMono(13, selected ? .semibold : .regular) : .ml(13, selected ? .bold : .medium))
+                    .foregroundStyle(selected ? palette.text : palette.text2)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if selected {
+                    IconView(.check, size: 13, strokeWidth: 2.6).foregroundStyle(palette.accentInk)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(palette.text.opacity(selected ? 0.08 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .pressCard()
+    }
+
+    private var valueField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                TextField(kind.placeholder, text: $value)
+                    .textFieldStyle(.plain)
+                    .font(.mlMono(13))
+                    .foregroundStyle(palette.text)
+                    .padding(.horizontal, 14)
+                    .frame(height: 40)
+                    .mlGlass(.rounded(Radii.field), fallback: palette.surface2)
+                    .onChange(of: value) { _ in invalid = nil }
+                    .onSubmit(commit)
+                if kind.needsProcessMatching { appPicker }
+            }
+            if let invalid {
+                Text(L.invalid(invalid, locale))
+                    .font(.ml(12))
+                    .foregroundStyle(palette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Fills a process rule's value from an app: its executable, its path, or
+    /// a pattern for either — so nobody has to know what a bundle's binary is
+    /// called.
+    private var appPicker: some View {
+        Button {
+            choosingApp.toggle()
+        } label: {
+            IconView(.layers, size: 16)
+                .foregroundStyle(palette.text)
+                .frame(width: 40, height: 40)
+                .mlGlass(.rounded(Radii.field), fallback: palette.surface2)
+                .contentShape(Rectangle())
+        }
+        .pressIcon()
+        .help(L.t(.ruleChooseApp, locale))
+        .popover(isPresented: $choosingApp, arrowEdge: .bottom) {
+            let live = apps.filter { running.contains($0.executable) }
+            let rest = apps.filter { !running.contains($0.executable) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    if apps.isEmpty {
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(20)
+                    }
+                    if !live.isEmpty {
+                        sectionLabel(L.t(.ruleRunning, locale).uppercased())
+                        ForEach(live) { app in appRow(app) }
+                    }
+                    if !rest.isEmpty {
+                        sectionLabel(L.t(.installedApps, locale)).padding(.top, live.isEmpty ? 0 : 6)
+                        ForEach(rest) { app in appRow(app) }
+                    }
+                }
+                .padding(8)
+            }
+            .frame(width: 320, height: 380)
+            .environment(\.palette, palette)
+            .mlLocale(locale)
+        }
+    }
+
+    private func appRow(_ app: AppEntry) -> some View {
+        listRow(app.name, mono: false, selected: false,
+                icon: NSWorkspace.shared.icon(forFile: app.path)) {
+            pick(app)
+            choosingApp = false
+        }
+    }
+
+    private var targetList: some View {
+        let known = [RoutingRule.direct, RoutingRule.reject] + groups
+        // A rule whose group has since gone from the subscription still shows
+        // where it pointed.
+        let lost = known.contains(target) ? nil : target
+        let list = VStack(alignment: .leading, spacing: 2) {
+                sectionLabel(L.t(.targetBuiltIn, locale))
+                targetRow(RoutingRule.direct, note: L.t(.targetDirect, locale), dot: palette.stUpInk)
+                targetRow(RoutingRule.reject, note: L.t(.targetReject, locale), dot: palette.danger)
+                if !groups.isEmpty || lost != nil {
+                    sectionLabel(L.t(.targetGroups, locale)).padding(.top, 6)
+                    ForEach(groups, id: \.self) { group in
+                        targetRow(group, note: nil, dot: palette.accentInk)
+                    }
+                    if let lost {
+                        targetRow(lost, note: L.t(.targetMissing, locale), dot: palette.danger)
+                    }
+                }
+            }
+            .padding(8)
+        // Its own height while it fits; past that it scrolls, with the
+        // scroller showing, so groups under the fold are not taken for absent.
+        return Group {
+            if #available(macOS 13.0, *) {
+                ViewThatFits(in: .vertical) {
+                    list
+                    ScrollView { list }.scrollIndicators(.visible)
+                }
+            } else {
+                ScrollView { list }
+            }
+        }
+        .frame(maxHeight: 184)
+        .mlGlass(.rounded(Radii.card), fallback: palette.surface)
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.ml(10.5, .heavy))
+            .tracking(0.08 * 10.5)
+            .foregroundStyle(palette.textMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+    }
+
+    private func targetRow(_ name: String, note: String?, dot: Color) -> some View {
+        let selected = target == name
+        return Button {
+            target = name
+        } label: {
+            HStack(spacing: 10) {
+                Circle().fill(dot).frame(width: 7, height: 7)
+                Text(name)
+                    .font(.ml(13.5, selected ? .bold : .semibold))
+                    .foregroundStyle(palette.text)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let note {
+                    Text(note)
+                        .font(.ml(12))
+                        .foregroundStyle(palette.textMuted)
+                        .lineLimit(1)
+                }
+                if selected {
+                    IconView(.check, size: 14, strokeWidth: 2.6).foregroundStyle(palette.accentInk)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background {
+                if selected {
+                    Color.clear.mlSoftGlass(RoundedRectangle(cornerRadius: 10, style: .continuous),
+                                            wash: palette.text.opacity(0.07))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .pressCard()
+        .animation(Motion.paint, value: selected)
+    }
+
+    /// Side by side, as tall as the taller of the two: stacked, they made the
+    /// sheet taller than the window it hangs from.
+    private var priorityChoice: some View {
+        HStack(spacing: 8) {
+            priorityCard(.override, title: L.t(.priorityOverride, locale),
+                         note: L.t(.priorityOverrideSub, locale))
+            priorityCard(.extend, title: L.t(.priorityExtend, locale),
+                         note: L.t(.priorityExtendSub, locale))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func priorityCard(_ option: RoutingRule.Priority, title: String, note: String) -> some View {
+        let selected = priority == option
+        return Button {
+            priority = option
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().strokeBorder(selected ? palette.accent : palette.hairline, lineWidth: 2)
+                    if selected { Circle().fill(palette.accent).padding(5) }
+                }
+                .frame(width: 20, height: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.ml(14, .bold)).foregroundStyle(palette.text)
+                    Text(note)
+                        .font(.ml(11.5))
+                        .foregroundStyle(palette.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxHeight: .infinity)
+            .mlGlass(.rounded(Radii.card),
+                     tint: selected ? palette.accent.opacity(0.1) : nil,
+                     fallback: selected ? palette.accentQuiet : palette.surface)
+            .contentShape(Rectangle())
+        }
+        .pressCard()
+        .animation(Motion.paint, value: selected)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            Button(action: cancel) {
+                Text(L.t(.ruleCancel, locale))
+                    .font(.ml(13, .heavy))
+                    .foregroundStyle(palette.text)
+                    .padding(.horizontal, 16)
+                    .frame(height: 38)
+                    .contentShape(Rectangle())
+            }
+            .pressButton()
+            .keyboardShortcut(.cancelAction)
+            Button(action: commit) {
+                Text(L.t(original == nil ? .rulesAdd : .ruleSave, locale))
+                    .font(.ml(13, .heavy))
+                    .foregroundStyle(palette.textOnAccent)
+                    .padding(.horizontal, 20)
+                    .frame(height: 38)
+                    .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)
+            }
+            .pressButton()
+            .keyboardShortcut(.defaultAction)
+            .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
+            .opacity(value.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Actions
+
+    private func commit() {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let problem = RoutingRule.validate(kind: kind, value: trimmed) {
+            invalid = problem
+            return
+        }
+        save(RoutingRule(id: original?.id ?? UUID(), kind: kind, value: trimmed, target: target,
+                         priority: priority, enabled: original?.enabled ?? true))
+    }
+
+    private func pick(_ app: AppEntry) {
+        let binary = "\(app.path)/Contents/MacOS/\(app.executable)"
+        switch kind {
+        case .processName: value = app.executable
+        case .processPath: value = binary
+        case .processNameRegex:
+            value = "(?i)^\(NSRegularExpression.escapedPattern(for: app.executable))$"
+        case .processPathRegex:
+            // Everything inside the bundle, helpers included.
+            value = "(?i)^\(NSRegularExpression.escapedPattern(for: app.path))/.*"
+        default: break
+        }
+    }
+
+    private func loadAppsIfNeeded() async {
+        guard kind.needsProcessMatching, apps.isEmpty else { return }
+        running = AppInventory.running()
+        let found = await Task.detached(priority: .userInitiated) { AppInventory.installed() }.value
+        apps = found.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+}

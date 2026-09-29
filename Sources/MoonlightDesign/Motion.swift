@@ -18,9 +18,8 @@ public enum Motion {
     // The names screens were written against. All of them are the one curve.
     public static let slide = standard
     public static let enter = standard
-    public static func rise(delay: Double = 0) -> Animation { standard.delay(delay) }
-    /// How far a page's content travels as it arrives. Short: it settles into
-    /// place rather than flying in.
+    /// How far a page travels as it arrives. Short: it settles into place
+    /// rather than flying in.
     public static let riseDistance: CGFloat = 8
 
     /// The sidebar's selection is the one thing that moves as a liquid rather

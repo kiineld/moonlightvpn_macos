@@ -13,7 +13,8 @@ import Yams
 /// - `allow-lan: false` and a loopback bind — this is a single-machine client,
 ///   and an unbound listener is an open proxy on the network
 /// - the TUN block, when the tunnel runs in TUN mode
-/// - split-tunnel rules, prepended (see ``splitRules(mode:processes:)``)
+/// - split-tunnel rules, prepended (see ``applySplit(rules:mode:splitRules:selector:root:)``)
+/// - the user's own rules, around the panel's (see ``placeOwnRules(_:around:targets:)``)
 public struct MihomoConfig {
 
     public struct Overrides: Sendable {
@@ -27,6 +28,8 @@ public struct MihomoConfig {
         /// Every rule the split screen contributes — the app toggles and the
         /// hand-written ones alike.
         public var splitRules: [SplitRule]
+        /// The user's own routing rules, kept by the app.
+        public var routingRules: [RoutingRule]
         public var logLevel: String
         /// Where mihomo keeps its geo databases and cache.
         public var dataDirectory: String
@@ -39,6 +42,7 @@ public struct MihomoConfig {
             routingMode: RoutingMode = .rule,
             splitMode: SplitMode = .all,
             splitRules: [SplitRule] = [],
+            routingRules: [RoutingRule] = [],
             logLevel: String = "warning",
             dataDirectory: String
         ) {
@@ -49,6 +53,7 @@ public struct MihomoConfig {
             self.routingMode = routingMode
             self.splitMode = splitMode
             self.splitRules = splitRules
+            self.routingRules = routingRules
             self.logLevel = logLevel
             self.dataDirectory = dataDirectory
         }
@@ -114,8 +119,12 @@ public struct MihomoConfig {
         if rules.isEmpty {
             rules = ["MATCH,\(Self.defaultSelector)"]
         }
-        root["rules"] = applySplit(
-            rules: rules,
+        let targets = Set([RoutingRule.direct, RoutingRule.reject])
+            .union(groups.compactMap { $0["name"] as? String })
+            .union(proxies.compactMap { $0["name"] as? String })
+        let own = placeOwnRules(overrides.routingRules, around: rules, targets: targets)
+        root["rules"] = own.before + applySplit(
+            rules: own.rules,
             mode: overrides.splitMode,
             splitRules: overrides.splitRules,
             selector: primarySelectorName(groups: groups, rules: rules),
@@ -254,6 +263,49 @@ public struct MihomoConfig {
             return active.map { "SUB-RULE,\($0.matcher()),\(panelSubRule)" }
                 + ["MATCH,DIRECT"]
         }
+    }
+
+    // MARK: - The user's own rules
+
+    /// Places the user's own rules around the panel's.
+    ///
+    /// Overrides go before everything — before the split rules too, since they
+    /// are the user's most specific wish. Extensions go after the panel's rules
+    /// but *before* its catch-all `MATCH`: appended after it, as the grammar
+    /// would literally have it, they could never match anything. In the
+    /// `.only` split mode they travel with the panel's rules into the sub-rule.
+    ///
+    /// A rule is left out rather than written when it is switched off, when
+    /// its value no longer validates, or when it points at a group the
+    /// subscription no longer has — mihomo refuses a whole config over one
+    /// rule naming a proxy it does not know, so a refresh that dropped a group
+    /// would otherwise take the tunnel down with it.
+    public static func placeOwnRules(
+        _ own: [RoutingRule], around rules: [String], targets: Set<String>
+    ) -> (before: [String], rules: [String]) {
+        let usable = own.filter {
+            $0.enabled && targets.contains($0.target)
+                && RoutingRule.validate(kind: $0.kind, value: $0.value) == nil
+        }
+        let before = usable.filter { $0.priority == .override }.map(\.line)
+        let after = usable.filter { $0.priority == .extend }.map(\.line)
+        var rules = rules
+        if let last = rules.last, last.uppercased().hasPrefix("MATCH,") {
+            rules.insert(contentsOf: after, at: rules.count - 1)
+        } else {
+            rules += after
+        }
+        return (before, rules)
+    }
+
+    /// What the rules screen needs to offer targets and to show the
+    /// subscription's own rules: its group names, in order, and its rules.
+    public static func routingInputs(panelYAML: String) -> (groups: [String], rules: [String]) {
+        guard let root = try? Yams.load(yaml: panelYAML) as? [String: Any] else { return ([], []) }
+        var groups = (root["proxy-groups"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+        // A config with no groups gets the app's own when it is built.
+        if groups.isEmpty, root["proxies"] != nil { groups = [defaultSelector, defaultAutoGroup] }
+        return (groups, root["rules"] as? [String] ?? [])
     }
 
     // MARK: - TUN

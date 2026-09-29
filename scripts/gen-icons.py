@@ -34,7 +34,8 @@ NAMES = {
     "download": "download", "play": "play",
     "panel-left-close": "panelLeftClose", "panel-left-open": "panelLeftOpen",
     "pin": "pin", "arrow-down": "arrowDown", "arrow-up": "arrowUp",
-    "log-out": "logOut",
+    "log-out": "logOut", "route": "route", "square-pen": "squarePen",
+    "grip-vertical": "gripVertical", "circle-user": "circleUser",
 }
 
 

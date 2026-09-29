@@ -2,12 +2,12 @@ import SwiftUI
 import MoonlightDesign
 import MoonlightCore
 
-/// Split tunnelling.
+/// Split tunnelling by app.
 ///
-/// Two ways in to the same list. The app toggles are a convenience over
-/// `PROCESS-NAME`; the rules panel is the general form, so a rule can also match
-/// a process the scanner never found, a domain, a regex, a CIDR or a port. Both
-/// write into one `[SplitRule]`, because that is what they are to the core.
+/// The app switches are `PROCESS-NAME` rules the split mode composes with the
+/// subscription's routing. Rules for anything else — a domain, an address, a
+/// port, a process the scanner never found — live on the rules page, where
+/// they can point anywhere rather than only around the tunnel or through it.
 ///
 /// The TUN constraint is **per rule**, not per screen: `PROCESS-*` rules need
 /// the core to identify the process behind a connection, which only TUN can do,
@@ -39,13 +39,12 @@ struct AppsScreen: View {
             if hasInertProcessRules { tunBanner }
             HStack(alignment: .top, spacing: 16) {
                 appList
-                RulesPanel(rules: $rules, onChange: save)
-                    .frame(width: 400)
+                    .opacity(mode == .all ? 0.45 : 1)
+                    .animation(Motion.paint, value: mode)
+                rulesLink
+                    .frame(width: 300)
             }
-            .opacity(mode == .all ? 0.45 : 1)
-            .animation(Motion.paint, value: mode)
         }
-        .rise(0, page)
         .onAppear(perform: load)
     }
 
@@ -211,56 +210,25 @@ struct AppsScreen: View {
     private func save() {
         Task { await tunnel.setSplitRules(rules) }
     }
-}
 
-// MARK: - Rules
-
-private struct RulesPanel: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.appLocale) private var locale
-    @Binding var rules: [SplitRule]
-    let onChange: () -> Void
-
-    @State private var kind: SplitRule.Kind = .domainSuffix
-    @State private var value = ""
-    @State private var error: String?
-
-    /// Rules the app list owns are shown there, not here — they would be a
-    /// second, desynchronised copy of the same switch.
-    private var custom: [SplitRule] { rules.filter { !$0.isFromAppList } }
-
-    var body: some View {
+    /// The way to the rules page, where sites, addresses and ports are routed.
+    private var rulesLink: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Overline(text: L.t(.rules, locale))
                 Spacer(minLength: 0)
             }
-            .frame(height: AppsScreen.headingHeight)
+            .frame(height: Self.headingHeight)
             .padding(.horizontal, 2)
 
             RowGroup {
-                editor
-                if !custom.isEmpty {
-                    RowDivider(leading: 0)
-                    ForEach(Array(custom.enumerated()), id: \.element.id) { index, rule in
-                        if index > 0 { RowDivider(leading: 18) }
-                        RuleRow(
-                            rule: rule,
-                            isOn: Binding(
-                                get: { rule.enabled },
-                                set: { on in
-                                    guard let at = rules.firstIndex(where: { $0.id == rule.id })
-                                    else { return }
-                                    rules[at].enabled = on
-                                    onChange()
-                                }
-                            ),
-                            remove: {
-                                rules.removeAll { $0.id == rule.id }
-                                onChange()
-                            }
-                        )
-                    }
+                ActionRow(
+                    icon: .route,
+                    fill: palette.cat1,
+                    title: L.t(.appsRulesLink, locale),
+                    subtitle: L.t(.appsRulesLinkSub, locale)
+                ) {
+                    page = .rules
                 }
             }
 
@@ -271,136 +239,6 @@ private struct RulesPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
         }
-    }
-
-    private var editor: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach(SplitRule.Kind.allCases, id: \.self) { option in
-                        Button {
-                            kind = option
-                            error = nil
-                        } label: {
-                            Text(option.rawValue)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(kind.rawValue)
-                            .font(.mlMono(11.5, .medium))
-                            .lineLimit(1)
-                        IconView(.chevronRight, size: 12, strokeWidth: 2.4)
-                            .rotationEffect(.degrees(90))
-                    }
-                    .foregroundStyle(palette.text)
-                    .padding(.horizontal, 12)
-                    .frame(height: 34)
-                    .mlGlass(.capsule, fallback: palette.surface2)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .pointerCursor()
-
-                if kind.needsProcessMatching {
-                    Text("TUN")
-                        .font(.ml(10, .heavy))
-                        .foregroundStyle(palette.accentInk)
-                        .padding(.horizontal, 7)
-                        .frame(height: 20)
-                        .mlGlass(.capsule, tint: palette.accent.opacity(0.25), fallback: palette.accentQuiet)
-                }
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 8) {
-                TextField(kind.placeholder, text: $value)
-                    .textFieldStyle(.plain)
-                    .font(.mlMono(12))
-                    .foregroundStyle(palette.text)
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .mlGlass(.rounded(Radii.field), fallback: palette.surface2)
-                    .onSubmit(add)
-
-                Button(action: add) {
-                    IconView(.plus, size: 16, strokeWidth: 2.4)
-                        .foregroundStyle(palette.textOnAccent)
-                        .frame(width: 36, height: 36)
-                        .mlGlass(.circle, tint: palette.accent, fallback: palette.accent)
-                }
-                .pressIcon()
-                .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-
-            if let error {
-                Text(error)
-                    .font(.ml(11.5))
-                    .foregroundStyle(palette.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(16)
-    }
-
-    /// Validated before it can be added: a bad rule does not fail on its own —
-    /// mihomo refuses the whole config, so the tunnel stops rather than the rule
-    /// being skipped.
-    private func add() {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let invalid = SplitRule.validate(kind: kind, value: trimmed) {
-            error = invalid.errorDescription
-            return
-        }
-        guard !rules.contains(where: { $0.kind == kind && $0.value == trimmed }) else {
-            value = ""
-            error = nil
-            return
-        }
-        rules.append(SplitRule(kind: kind, value: trimmed))
-        value = ""
-        error = nil
-        onChange()
-    }
-}
-
-private struct RuleRow: View {
-    @Environment(\.palette) private var palette
-    let rule: SplitRule
-    @Binding var isOn: Bool
-    let remove: () -> Void
-
-    @State private var hovering = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rule.kind.rawValue)
-                    .font(.ml(10.5, .heavy))
-                    .foregroundStyle(palette.textMuted)
-                Text(rule.value)
-                    .font(.mlMono(12.5))
-                    .foregroundStyle(palette.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button(action: remove) {
-                IconView(.trash2, size: 15)
-                    .foregroundStyle(hovering ? palette.danger : palette.textMuted)
-            }
-            .buttonStyle(.plain)
-            .pointerCursor()
-
-            MLToggle(isOn: $isOn)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
-        .background(hovering ? palette.surface2.opacity(0.6) : .clear)
-        .onHover { hovering = $0 }
-        .animation(Motion.paint, value: hovering)
     }
 }
 

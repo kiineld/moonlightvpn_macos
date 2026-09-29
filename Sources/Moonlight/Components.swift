@@ -81,36 +81,33 @@ extension View {
     func pressCard() -> some View { buttonStyle(PressScale(scale: Motion.pressCard)) }
     func pressButton() -> some View { buttonStyle(PressScale(scale: Motion.pressButton)) }
     func pressIcon() -> some View { buttonStyle(PressScale(scale: Motion.pressIcon)) }
-
-    /// The staggered entrance the design gives every screen's cards.
-    func rise(_ delay: Double = 0, _ trigger: some Hashable) -> some View {
-        modifier(RiseIn(delay: delay, trigger: AnyHashable(trigger)))
-    }
 }
 
-/// The entrance attaches its animation to the view with `.animation(_:value:)`
-/// rather than firing `withAnimation` from `onAppear`. A `withAnimation`
-/// transaction that never gets ticked leaves the render stuck at its *start*
-/// value, which for an entrance means an invisible card; attaching the animation
-/// to the view instead means the rendered state always follows the model, so a
-/// dropped animation costs only the slide.
-private struct RiseIn: ViewModifier {
-    let delay: Double
-    let trigger: AnyHashable
+/// How every page arrives: it fades in as it settles the last few points into
+/// place, on the one curve.
+///
+/// The curve is scoped to the fade and the offset where the system allows it
+/// (macOS 14). `.animation(_:value:)` on a whole page animates everything else
+/// that changes in the same update too — a page that measures itself and
+/// centres its content on arrival would slide into place instead of starting
+/// there.
+struct PageEntrance: ViewModifier {
     @State private var shown = false
 
     func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : Motion.riseDistance)
-            .animation(Motion.rise(delay: delay), value: shown)
-            .onAppear { shown = true }
-            .onChange(of: trigger) { _ in
-                // Two transactions: hiding and revealing in one pass coalesces
-                // to "no change" and the stagger never plays.
-                shown = false
-                DispatchQueue.main.async { shown = true }
+        Group {
+            if #available(macOS 14.0, *) {
+                content.animation(Motion.standard) {
+                    $0.opacity(shown ? 1 : 0).offset(y: shown ? 0 : Motion.riseDistance)
+                }
+            } else {
+                content
+                    .opacity(shown ? 1 : 0)
+                    .offset(y: shown ? 0 : Motion.riseDistance)
+                    .animation(Motion.standard, value: shown)
             }
+        }
+        .onAppear { shown = true }
     }
 }
 
@@ -227,6 +224,9 @@ struct ColumnHeading: View {
             .font(.ml(10.5, .heavy))
             .tracking(0.08 * 10.5)
             .foregroundStyle(palette.textMuted)
+            // A heading never wraps: broken over two lines it reads as two words.
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .frame(width: width, alignment: alignment)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: alignment)
     }

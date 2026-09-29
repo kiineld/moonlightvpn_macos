@@ -87,6 +87,7 @@ jobs:
           TELEGRAM_BOT_URL: ${{ vars.TELEGRAM_BOT_URL }}
           TELEGRAM_CHANNEL_URL: ${{ vars.TELEGRAM_CHANNEL_URL }}
           SUPPORT_URL: ${{ vars.SUPPORT_URL }}
+          CABINET_URL: ${{ vars.CABINET_URL }}
         run: scripts/build-app.sh
 
       - name: Verify the slices the bundle claims to have

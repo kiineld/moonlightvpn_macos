@@ -46,7 +46,6 @@ struct LogsScreen: View {
             controls
             table
         }
-        .rise(0, page)
     }
 
     private var controls: some View {

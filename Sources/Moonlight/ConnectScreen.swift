@@ -45,13 +45,11 @@ struct ConnectScreen: View {
                 timer
                     .padding(.bottom, 20)
                     .background(measure(AboveButtonKey.self))
-                    .rise(0, page)
                 PowerButton(state: tunnel.state, enabled: tunnel.hasSubscription,
                             large: !serversOpen) {
                     Task { await tunnel.toggle() }
                 }
                 .help("\(L.t(tunnel.state.isConnected ? .hintDisconnect : .hintConnect, locale)) · ⌘⇧C")
-                .rise(0, page)
                 belowButtonContent
                     .background(measure(BelowButtonKey.self))
                 if !tunnel.nodes.isEmpty {
@@ -153,7 +151,6 @@ struct ConnectScreen: View {
                 }
             }
             .padding(.top, 18)
-            .rise(0, page)
 
             // Why it is not connected, or why the list may be stale — a failed
             // connect used to leave only "Отключено", with the reason in the log.
@@ -167,13 +164,11 @@ struct ConnectScreen: View {
                 AnnounceBanner(text: announce)
                     .frame(maxWidth: 560)
                     .padding(.top, 28)
-                    .rise(0.05, page)
                     .transition(.opacity)
             }
             serverList
                 .frame(maxWidth: 560)
                 .padding(.top, 28)
-                .rise(0.07, page)
         }
         .animation(Motion.standard, value: tunnel.issue)
         .animation(Motion.standard, value: tunnel.info.announce)

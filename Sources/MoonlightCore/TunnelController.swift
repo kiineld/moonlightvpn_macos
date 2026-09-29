@@ -43,6 +43,11 @@ public final class TunnelController: ObservableObject {
     /// made while disconnected — which changes nothing else — still redraws
     /// the controls showing it.
     @Published public private(set) var tunnelMode: TunnelMode
+    /// The subscription's proxy groups, in its order — what a rule of the
+    /// user's own can point at besides `DIRECT` and `REJECT`.
+    @Published public private(set) var ruleTargets: [String] = []
+    /// The subscription's own rules, as it wrote them.
+    @Published public private(set) var profileRules: [String] = []
 
     // MARK: Collaborators
 
@@ -130,12 +135,14 @@ public final class TunnelController: ObservableObject {
         }
 
         recoverFromCrash()
+        migrateSplitRules()
 
         // Warm the core as soon as there is a subscription, so the first latency
         // pass is instant rather than paying for a cold start. The redactions
         // go first: the core's log quotes server addresses.
         Task {
             await updateRedactions()
+            await refreshRoutingInputs()
             await ensureCoreRunning()
         }
         Task { await refreshHelperStatus() }
@@ -289,6 +296,8 @@ public final class TunnelController: ObservableObject {
         info = SubscriptionInfo()
         subscriptionSource = nil
         selectedNode = nil
+        ruleTargets = []
+        profileRules = []
     }
 
     @discardableResult
@@ -356,6 +365,7 @@ public final class TunnelController: ObservableObject {
             preferences.lastRefresh = lastRefresh
             issue = nil
             await updateRedactions()
+            await refreshRoutingInputs()
 
             if state.isConnected || core.isRunning {
                 // Reload in place rather than reconnecting: a refresh should not
@@ -953,6 +963,99 @@ public final class TunnelController: ObservableObject {
         }
     }
 
+    // MARK: - The user's own rules
+
+    /// The rules as last applied.
+    public var routingRules: [RoutingRule] { preferences.routingRules }
+
+    /// Checks `rules` against the core, then keeps them and applies them.
+    ///
+    /// Checked first because a rule the core refuses does not fail on its own:
+    /// the whole config is refused, and a connected tunnel would stop carrying
+    /// anything. The check is the core's own `-t`, on the config these rules
+    /// would produce, so what passes here is what will load.
+    public func applyRoutingRules(_ rules: [RoutingRule]) async -> Bool {
+        var proposed = overrides(mode: state.isConnected ? (activeMode ?? tunnelMode) : .systemProxy)
+        proposed.routingRules = rules
+        let overrides = proposed, core = core, panelURL = panelURL
+        let probe = configURL.deletingLastPathComponent().appendingPathComponent("rules-check.yaml")
+        do {
+            try await offMain {
+                defer { try? FileManager.default.removeItem(at: probe) }
+                let yaml = try MihomoConfig.build(
+                    panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                    overrides: overrides
+                )
+                try yaml.write(to: probe, atomically: true, encoding: .utf8)
+                try core.validate(configPath: probe)
+            }
+        } catch {
+            LogStore.shared.client("Rules not applied: \(error.localizedDescription)", level: .error)
+            return false
+        }
+        preferences.routingRules = rules
+        LogStore.shared.client("Applied \(rules.filter(\.enabled).count) rule(s) of the user's own")
+        await reapplyRouting()
+        return true
+    }
+
+    /// Reads the subscription's groups and rules for the rules screen.
+    private func refreshRoutingInputs() async {
+        let panelURL = panelURL
+        let inputs = await offMain { () -> RoutingInputs in
+            let yaml = (try? String(contentsOf: panelURL, encoding: .utf8)) ?? ""
+            let parsed = MihomoConfig.routingInputs(panelYAML: yaml)
+            return RoutingInputs(groups: parsed.groups, rules: parsed.rules)
+        }
+        ruleTargets = inputs.groups
+        profileRules = inputs.rules
+    }
+
+    private struct RoutingInputs: Sendable {
+        var groups: [String]
+        var rules: [String]
+    }
+
+    /// Moves the hand-written split rules of earlier versions into the user's
+    /// own rules, once.
+    ///
+    /// They lived on the apps screen, beside the app switches, and only ever
+    /// went one of two ways: around the tunnel in "all except" mode, or
+    /// through it in "only these". As rules of the user's own they keep doing
+    /// that — the first as rules to `DIRECT`, the second to the group the
+    /// subscription routes through — and can now point anywhere. In "all" mode
+    /// they did nothing, so they arrive switched off.
+    private func migrateSplitRules() {
+        guard !preferences.routingRulesMigrated else { return }
+        preferences.routingRulesMigrated = true
+        let split = preferences.splitRules
+        let custom = split.filter { !$0.isFromAppList }
+        guard !custom.isEmpty else { return }
+
+        let mode = preferences.splitMode
+        var target = RoutingRule.direct
+        if mode == .only {
+            let root = (try? loadPanelRoot()) ?? [:]
+            target = MihomoConfig.primarySelectorName(
+                groups: root["proxy-groups"] as? [[String: Any]] ?? [],
+                rules: root["rules"] as? [String] ?? []
+            )
+        }
+        let moved = custom.compactMap { rule -> RoutingRule? in
+            guard let kind = RoutingRule.Kind(rawValue: rule.kind.rawValue) else { return nil }
+            return RoutingRule(kind: kind, value: rule.value, target: target,
+                               priority: .override, enabled: rule.enabled && mode != .all)
+        }
+        preferences.routingRules += moved
+        preferences.splitRules = split.filter(\.isFromAppList)
+        LogStore.shared.client("Moved \(moved.count) split rule(s) to the rules screen")
+    }
+
+    private func loadPanelRoot() throws -> [String: Any] {
+        let yaml = try String(contentsOf: panelURL, encoding: .utf8)
+        return try Yams.load(yaml: yaml) as? [String: Any] ?? [:]
+    }
+
     public func setSplitMode(_ mode: SplitMode) async {
         preferences.splitMode = mode
         await reapplyRouting()
@@ -1089,6 +1192,7 @@ public final class TunnelController: ObservableObject {
             splitRules: mode == .tun
                 ? preferences.splitRules
                 : preferences.splitRules.filter { !$0.kind.needsProcessMatching },
+            routingRules: preferences.routingRules,
             dataDirectory: support.appendingPathComponent("core").path
         )
     }

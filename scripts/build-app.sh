@@ -23,6 +23,7 @@ CONTENTS="$APP/Contents"
 TELEGRAM_BOT_URL="${TELEGRAM_BOT_URL:-https://t.me/the_moonlight_vpn_bot}"
 TELEGRAM_CHANNEL_URL="${TELEGRAM_CHANNEL_URL:-https://t.me/moonlight_vpn_channel}"
 SUPPORT_URL="${SUPPORT_URL:-https://t.me/moonlight_vps}"
+CABINET_URL="${CABINET_URL:-https://cabinetofficial.rustafield.site}"
 RELEASES_URL="${RELEASES_URL:-https://github.com/kiineld/moonlightvpn_macos/releases/latest}"
 
 scripts/fetch-mihomo.sh
@@ -80,6 +81,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>MLTelegramBotURL</key><string>$TELEGRAM_BOT_URL</string>
     <key>MLTelegramChannelURL</key><string>$TELEGRAM_CHANNEL_URL</string>
     <key>MLSupportURL</key><string>$SUPPORT_URL</string>
+    <key>MLCabinetURL</key><string>$CABINET_URL</string>
     <key>MLReleasesURL</key><string>$RELEASES_URL</string>
     <!-- A subscription URL points at whatever host the panel operator runs, and
          self-hosted panels are routinely reached by bare IP with a self-signed

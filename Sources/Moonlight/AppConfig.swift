@@ -10,6 +10,8 @@ public enum AppConfig {
     public static var telegramBotURL: URL { url("MLTelegramBotURL", "https://t.me/the_moonlight_vpn_bot") }
     public static var telegramChannelURL: URL { url("MLTelegramChannelURL", "https://t.me/moonlight_vpn_channel") }
     public static var supportURL: URL { url("MLSupportURL", "https://t.me/moonlight_vps") }
+    /// The personal account on the service's website.
+    public static var cabinetURL: URL { url("MLCabinetURL", "https://cabinetofficial.rustafield.site") }
     public static var releasesURL: URL {
         url("MLReleasesURL", "https://github.com/kiineld/moonlightvpn_macos/releases/latest")
     }

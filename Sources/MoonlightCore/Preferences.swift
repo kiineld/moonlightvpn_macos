@@ -29,6 +29,8 @@ public final class Preferences: @unchecked Sendable {
         static let serverDescriptions = "serverDescriptions"
         static let splitMode = "splitMode"
         static let splitRules = "splitRules"
+        static let routingRules = "routingRules"
+        static let routingRulesMigrated = "routingRulesMigrated"
         static let launchAtLogin = "launchAtLogin"
         static let menuBarIcon = "menuBarIcon"
         static let sidebarCollapsed = "sidebarCollapsed"
@@ -130,6 +132,25 @@ public final class Preferences: @unchecked Sendable {
         set {
             defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.splitRules)
         }
+    }
+
+    /// The user's own routing rules, in order. Kept here rather than in the
+    /// subscription's YAML, so a refresh never touches them.
+    public var routingRules: [RoutingRule] {
+        get {
+            guard let data = defaults.data(forKey: Key.routingRules) else { return [] }
+            return (try? JSONDecoder().decode([RoutingRule].self, from: data)) ?? []
+        }
+        set {
+            defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.routingRules)
+        }
+    }
+
+    /// Whether the hand-written split rules of an earlier version have been
+    /// moved into ``routingRules``.
+    public var routingRulesMigrated: Bool {
+        get { defaults.bool(forKey: Key.routingRulesMigrated) }
+        set { defaults.set(newValue, forKey: Key.routingRulesMigrated) }
     }
 
     public var launchAtLogin: Bool {

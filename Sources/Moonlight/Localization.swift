@@ -42,7 +42,7 @@ public enum L {
         case plan, planUnknown, traffic
         case trafficCaps, subscriptionLink, copy, copied
         case refreshSubscription, refreshMetaIdle, refreshMetaSyncing, refreshMetaDone
-        case extendSubscription, extendSubtitle
+        case extendSubscription, extendSubtitle, personalAccount, personalAccountSub
         case addSubscriptionRow, addSubscriptionSubtitle
         case validUntil, unlimited
 
@@ -92,6 +92,19 @@ public enum L {
         // Subscription service extras
         case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
         case trafficResets, removeSubscriptionSub, hideAnnounce
+        // Rules
+        case navRules, titleRules, subtitleRules, rulesMine, rulesProfile, rulesFilter
+        case rulesAdd, rulesEdit, rulesOwnCount, rulesProfileCount
+        case colType, colValue, colTarget, colPriority
+        case ruleType, ruleValue, ruleTarget, rulePriority, ruleChooseApp, ruleRunning
+        case targetBuiltIn, targetGroups, targetDirect, targetReject, targetMissing
+        case priorityOverride, priorityOverrideSub, priorityExtend, priorityExtendSub
+        case familyDomain, familyIP, familyPort, familyProcess, familyOther
+        case ruleCancel, ruleSave, ruleEditHint, ruleDeleteHint, ruleDragHint, ruleTunOnly
+        case rulesUnsaved, rulesReset, rulesApply, rulesApplying, rulesApplyFailed
+        case rulesEmpty, rulesEmptyHint, rulesProfileEmpty, rulesModeNote
+        case invalidEmpty, invalidComma, invalidRegex, invalidPort, invalidCIDR, invalidASN, invalidNetwork
+        case appsRulesLink, appsRulesLinkSub
         // Issues
         case issueInvalidLink, issueNoSubscription, issueOffline, issueServerUnavailable
         case issueErrorCode, issueTryLater, issueLinkRejected, issueEmpty, issueNoUsable
@@ -169,7 +182,9 @@ public enum L {
             case .refreshMetaSyncing: return "Синхронизация с сервером…"
             case .refreshMetaDone: return "Обновлено только что"
             case .extendSubscription: return "Продлить подписку"
-            case .extendSubtitle: return "Откроется личный кабинет"
+            case .extendSubtitle: return "В Telegram-боте"
+            case .personalAccount: return "Личный кабинет"
+            case .personalAccountSub: return "Устройства и подписка на сайте"
             case .addSubscriptionRow: return "Добавить подписку"
             case .addSubscriptionSubtitle: return "Вставить ссылку из бота"
             case .validUntil: return "действует до"
@@ -310,6 +325,64 @@ public enum L {
             case .trafficResets: return "Трафик обновится"
             case .removeSubscriptionSub: return "Ссылка будет удалена с этого Mac"
             case .hideAnnounce: return "Скрыть"
+            case .navRules: return "Правила"
+            case .titleRules: return "Правила"
+            case .subtitleRules: return "Куда идёт трафик: ваши правила и правила подписки"
+            case .rulesMine: return "Мои правила"
+            case .rulesProfile: return "Правила подписки"
+            case .rulesFilter: return "Фильтр по типу, значению или цели"
+            case .rulesAdd: return "Добавить правило"
+            case .rulesEdit: return "Изменить правило"
+            case .rulesOwnCount: return "Своих"
+            case .rulesProfileCount: return "Правил"
+            case .colType: return "ТИП"
+            case .colValue: return "ЗНАЧЕНИЕ"
+            case .colTarget: return "ЦЕЛЬ"
+            case .colPriority: return "ПРИОРИТЕТ"
+            case .ruleType: return "Тип"
+            case .ruleValue: return "Значение"
+            case .ruleTarget: return "Цель"
+            case .rulePriority: return "Приоритет"
+            case .ruleChooseApp: return "Выбрать приложение"
+            case .ruleRunning: return "Запущенные"
+            case .targetBuiltIn: return "ВСТРОЕННЫЕ"
+            case .targetGroups: return "ГРУППЫ ПОДПИСКИ"
+            case .targetDirect: return "Мимо VPN"
+            case .targetReject: return "Блокировать соединение"
+            case .targetMissing: return "Этой группы больше нет в подписке — правило пропускается"
+            case .priorityOverride: return "Override"
+            case .priorityOverrideSub: return "Применяется до правил подписки"
+            case .priorityExtend: return "Extend"
+            case .priorityExtendSub: return "Применяется после правил подписки"
+            case .familyDomain: return "ДОМЕН"
+            case .familyIP: return "IP"
+            case .familyPort: return "ПОРТ"
+            case .familyProcess: return "ПРОЦЕСС"
+            case .familyOther: return "ДРУГОЕ"
+            case .ruleCancel: return "Отмена"
+            case .ruleSave: return "Сохранить"
+            case .ruleEditHint: return "Изменить"
+            case .ruleDeleteHint: return "Удалить"
+            case .ruleDragHint: return "Перетащите, чтобы изменить порядок"
+            case .ruleTunOnly: return "Работает только в режиме TUN"
+            case .rulesUnsaved: return "Изменения не применены"
+            case .rulesReset: return "Сбросить"
+            case .rulesApply: return "Применить"
+            case .rulesApplying: return "Применяются…"
+            case .rulesApplyFailed: return "Ядро не приняло эти правила — подробности в логах"
+            case .rulesEmpty: return "Своих правил пока нет"
+            case .rulesEmptyHint: return "Пустите сайт мимо VPN, заблокируйте его или направьте через группу. Свои правила переживают обновление подписки."
+            case .rulesProfileEmpty: return "В подписке нет правил"
+            case .rulesModeNote: return "Правила действуют в режиме «По правилам» — сейчас выбран другой"
+            case .invalidEmpty: return "Укажите значение"
+            case .invalidComma: return "В значении не может быть запятой"
+            case .invalidRegex: return "Это не регулярное выражение"
+            case .invalidPort: return "Порт от 0 до 65535, диапазон через «-» или несколько через «/»"
+            case .invalidCIDR: return "Нужна подсеть, например 192.168.1.0/24"
+            case .invalidASN: return "Только номер AS, например 13335"
+            case .invalidNetwork: return "tcp или udp"
+            case .appsRulesLink: return "Правила для сайтов, адресов и портов"
+            case .appsRulesLinkSub: return "Пустить мимо VPN, заблокировать или направить через группу"
             case .issueInvalidLink: return "Это не похоже на ссылку подписки"
             case .issueNoSubscription: return "Сначала добавьте подписку"
             case .issueOffline: return "Нет подключения к интернету"
@@ -406,7 +479,9 @@ public enum L {
             case .refreshMetaSyncing: return "Syncing with the server…"
             case .refreshMetaDone: return "Updated just now"
             case .extendSubscription: return "Extend subscription"
-            case .extendSubtitle: return "Opens your account"
+            case .extendSubtitle: return "In the Telegram bot"
+            case .personalAccount: return "Personal account"
+            case .personalAccountSub: return "Devices and subscription on the website"
             case .addSubscriptionRow: return "Add a subscription"
             case .addSubscriptionSubtitle: return "Paste a link from the bot"
             case .validUntil: return "valid until"
@@ -547,6 +622,64 @@ public enum L {
             case .trafficResets: return "Traffic resets"
             case .removeSubscriptionSub: return "Removes the link from this Mac"
             case .hideAnnounce: return "Hide"
+            case .navRules: return "Rules"
+            case .titleRules: return "Rules"
+            case .subtitleRules: return "Where traffic goes: your rules and the subscription's"
+            case .rulesMine: return "My rules"
+            case .rulesProfile: return "Subscription rules"
+            case .rulesFilter: return "Filter by type, value or target"
+            case .rulesAdd: return "Add rule"
+            case .rulesEdit: return "Edit rule"
+            case .rulesOwnCount: return "Own"
+            case .rulesProfileCount: return "Rules"
+            case .colType: return "TYPE"
+            case .colValue: return "VALUE"
+            case .colTarget: return "TARGET"
+            case .colPriority: return "PRIORITY"
+            case .ruleType: return "Type"
+            case .ruleValue: return "Value"
+            case .ruleTarget: return "Target"
+            case .rulePriority: return "Priority"
+            case .ruleChooseApp: return "Choose an app"
+            case .ruleRunning: return "Running"
+            case .targetBuiltIn: return "BUILT-IN"
+            case .targetGroups: return "SUBSCRIPTION GROUPS"
+            case .targetDirect: return "Bypass the VPN"
+            case .targetReject: return "Block the connection"
+            case .targetMissing: return "This group is no longer in the subscription — the rule is skipped"
+            case .priorityOverride: return "Override"
+            case .priorityOverrideSub: return "Applied before the subscription's rules"
+            case .priorityExtend: return "Extend"
+            case .priorityExtendSub: return "Applied after the subscription's rules"
+            case .familyDomain: return "DOMAIN"
+            case .familyIP: return "IP"
+            case .familyPort: return "PORT"
+            case .familyProcess: return "PROCESS"
+            case .familyOther: return "OTHER"
+            case .ruleCancel: return "Cancel"
+            case .ruleSave: return "Save"
+            case .ruleEditHint: return "Edit"
+            case .ruleDeleteHint: return "Delete"
+            case .ruleDragHint: return "Drag to reorder"
+            case .ruleTunOnly: return "Works in TUN mode only"
+            case .rulesUnsaved: return "Changes not applied"
+            case .rulesReset: return "Reset"
+            case .rulesApply: return "Apply"
+            case .rulesApplying: return "Applying…"
+            case .rulesApplyFailed: return "The core rejected these rules — the log has the details"
+            case .rulesEmpty: return "No rules of your own yet"
+            case .rulesEmptyHint: return "Send a site around the VPN, block it or route it through a group. Your rules survive subscription updates."
+            case .rulesProfileEmpty: return "The subscription has no rules"
+            case .rulesModeNote: return "Rules apply in Rule mode — another mode is selected"
+            case .invalidEmpty: return "Enter a value"
+            case .invalidComma: return "The value cannot contain a comma"
+            case .invalidRegex: return "Not a regular expression"
+            case .invalidPort: return "A port from 0 to 65535, a range with “-” or several joined by “/”"
+            case .invalidCIDR: return "A subnet, e.g. 192.168.1.0/24"
+            case .invalidASN: return "The AS number alone, e.g. 13335"
+            case .invalidNetwork: return "tcp or udp"
+            case .appsRulesLink: return "Rules for sites, addresses and ports"
+            case .appsRulesLinkSub: return "Send around the VPN, block, or route through a group"
             case .issueInvalidLink: return "This doesn't look like a subscription link"
             case .issueNoSubscription: return "Add a subscription first"
             case .issueOffline: return "No internet connection"
@@ -623,6 +756,32 @@ extension L {
         case .tunFailed: return t(.issueTunFailed, locale)
         case .helperMissing: return t(.issueHelperMissing, locale)
         case .helperOutdated: return t(.issueHelperOutdated, locale)
+        }
+    }
+}
+
+extension L {
+    /// A rule-type heading in the type picker.
+    static func family(_ family: RoutingRule.Kind.Family, _ locale: AppLocale) -> String {
+        switch family {
+        case .domain: return t(.familyDomain, locale)
+        case .ip: return t(.familyIP, locale)
+        case .port: return t(.familyPort, locale)
+        case .process: return t(.familyProcess, locale)
+        case .other: return t(.familyOther, locale)
+        }
+    }
+
+    /// Why a rule's value cannot be kept, in the user's language.
+    static func invalid(_ invalid: RoutingRule.Invalid, _ locale: AppLocale) -> String {
+        switch invalid {
+        case .empty: return t(.invalidEmpty, locale)
+        case .containsComma: return t(.invalidComma, locale)
+        case .badRegex: return t(.invalidRegex, locale)
+        case .badPort: return t(.invalidPort, locale)
+        case .badCIDR: return t(.invalidCIDR, locale)
+        case .badASN: return t(.invalidASN, locale)
+        case .badNetwork: return t(.invalidNetwork, locale)
         }
     }
 }

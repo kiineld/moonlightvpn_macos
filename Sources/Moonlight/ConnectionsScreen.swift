@@ -16,8 +16,7 @@ struct ConnectionsScreen: View {
     @Binding var page: Page
 
     @State private var connections: [MihomoAPI.Connection] = []
-    /// Nothing is drawn until the first answer arrives: the empty state used to
-    /// flash for a moment on every visit and then give way to the table.
+    /// Whether the first answer has arrived.
     @State private var loaded = false
     /// The order processes first appeared in. Sorting by live traffic
     /// reshuffled the rows every second, so nothing stayed under the pointer.
@@ -37,21 +36,29 @@ struct ConnectionsScreen: View {
             .sorted { (rank[$0.process] ?? .max, $1.download) < (rank[$1.process] ?? .max, $0.download) }
     }
 
+    /// The table, or the empty state. Until the first answer the tunnel's
+    /// state decides — connected, there is traffic to show — so the page
+    /// arrives whole with everything else. It used to draw nothing until the
+    /// core answered and then fade the table in on its own, a beat after the
+    /// page had already arrived: two entrances, one of them late.
+    private var showsTable: Bool {
+        loaded ? !groups.isEmpty : tunnel.state.isConnected
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             controls
-            if loaded {
-                Group {
-                    if groups.isEmpty { empty } else { table }
+            ZStack {
+                if showsTable {
+                    table.transition(.opacity)
+                } else {
+                    empty
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .transition(.opacity)
                 }
-                .transition(.opacity)
-            } else {
-                Spacer(minLength: 0)
             }
+            .animation(Motion.standard, value: showsTable)
         }
-        .animation(Motion.standard, value: loaded)
-        .animation(Motion.standard, value: groups.isEmpty)
-        .rise(0, page)
         .onAppear(perform: start)
         .onDisappear { poll?.cancel() }
     }
@@ -149,13 +156,16 @@ struct ConnectionsScreen: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            ColumnHeading(text: L.t(.colProcess, locale), width: 176)
-            ColumnHeading(text: L.t(.colChain, locale), width: 128)
-            ColumnHeading(text: L.t(.colRule, locale), width: 74)
-            ColumnHeading(text: L.t(.colNetwork, locale), width: 66)
-            ColumnHeading(text: L.t(.colDown, locale), width: 72, alignment: .trailing)
-            ColumnHeading(text: L.t(.colUp, locale), width: 72, alignment: .trailing)
-            ColumnHeading(text: L.t(.colTime, locale), alignment: .trailing)
+            // The process takes whatever is left; every other column is fixed.
+            // Time used to be the flexible one, and on a narrow window it was
+            // left some thirty points — "TIME" broke over two lines.
+            ColumnHeading(text: L.t(.colProcess, locale))
+            ColumnHeading(text: L.t(.colChain, locale), width: Columns.chain)
+            ColumnHeading(text: L.t(.colRule, locale), width: Columns.rule)
+            ColumnHeading(text: L.t(.colNetwork, locale), width: Columns.network)
+            ColumnHeading(text: L.t(.colDown, locale), width: Columns.bytes, alignment: .trailing)
+            ColumnHeading(text: L.t(.colUp, locale), width: Columns.bytes, alignment: .trailing)
+            ColumnHeading(text: L.t(.colTime, locale), width: Columns.time, alignment: .trailing)
             // Height pinned: a Color constrained only in width is greedy
             // vertically, which stretched the header row to fill the panel.
             Color.clear.frame(width: 26, height: 0)
@@ -188,6 +198,18 @@ struct ConnectionsScreen: View {
             }
         }
     }
+}
+
+/// The table's fixed column widths, shared by the header and both kinds of
+/// row so they cannot drift apart — the rule heading was 74 points over a
+/// 66-point column.
+private enum Columns {
+    static let process: CGFloat = 120
+    static let chain: CGFloat = 128
+    static let rule: CGFloat = 66
+    static let network: CGFloat = 66
+    static let bytes: CGFloat = 72
+    static let time: CGFloat = 58
 }
 
 /// One process and everything it has open.
@@ -241,27 +263,31 @@ private struct ProcessRow: View {
                         .foregroundStyle(palette.textMuted)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
-                .frame(width: 176, alignment: .leading)
+                .frame(minWidth: Columns.process, maxWidth: .infinity, alignment: .leading)
 
-                NodeChip(name: group.chain).frame(width: 128, alignment: .leading)
+                NodeChip(name: group.chain).frame(width: Columns.chain, alignment: .leading)
                 Text(group.rule)
                     .font(.ml(11.5)).foregroundStyle(palette.textMuted)
-                    .lineLimit(1).frame(width: 66, alignment: .leading)
+                    .lineLimit(1).frame(width: Columns.rule, alignment: .leading)
                 HStack(spacing: 4) {
                     ForEach(group.networks, id: \.self) { NetworkChip(network: $0) }
                 }
-                .frame(width: 66, alignment: .leading)
+                .frame(width: Columns.network, alignment: .leading)
                 Text(Format.bytes(group.download, locale: locale))
                     .font(.mlMono(11.5, .semibold)).foregroundStyle(palette.stUpInk)
-                    .frame(width: 72, alignment: .trailing)
+                    .frame(width: Columns.bytes, alignment: .trailing)
                 Text(Format.bytes(group.upload, locale: locale))
                     .font(.mlMono(11.5, .semibold)).foregroundStyle(palette.text2)
-                    .frame(width: 72, alignment: .trailing)
+                    .frame(width: Columns.bytes, alignment: .trailing)
                 Text(Format.age(group.newest, locale: locale))
                     .font(.mlMono(11.5)).foregroundStyle(palette.textMuted)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .lineLimit(1)
+                    .frame(width: Columns.time, alignment: .trailing)
             }
             .padding(.leading, 16)
+            // The gap the header and the host rows leave before the close
+            // button, so the last column lines up down the whole table.
+            .padding(.trailing, 8)
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
@@ -315,25 +341,26 @@ private struct HostRow: View {
                 .foregroundStyle(palette.text2)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 176, alignment: .leading)
+                .frame(minWidth: Columns.process - 20, maxWidth: .infinity, alignment: .leading)
             NodeChip(name: connection.node)
-                .frame(width: 128, alignment: .leading)
+                .frame(width: Columns.chain, alignment: .leading)
             Text(connection.rule)
                 .font(.ml(11.5))
                 .foregroundStyle(palette.textMuted)
                 .lineLimit(1)
-                .frame(width: 66, alignment: .leading)
+                .frame(width: Columns.rule, alignment: .leading)
             NetworkChip(network: connection.network)
-                .frame(width: 66, alignment: .leading)
+                .frame(width: Columns.network, alignment: .leading)
             Text(Format.bytes(connection.download, locale: locale))
                 .font(.mlMono(11.5)).foregroundStyle(palette.stUpInk)
-                .frame(width: 72, alignment: .trailing)
+                .frame(width: Columns.bytes, alignment: .trailing)
             Text(Format.bytes(connection.upload, locale: locale))
                 .font(.mlMono(11.5)).foregroundStyle(palette.text2)
-                .frame(width: 72, alignment: .trailing)
+                .frame(width: Columns.bytes, alignment: .trailing)
             Text(Format.age(connection.start, locale: locale))
                 .font(.mlMono(11.5)).foregroundStyle(palette.textMuted)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: Columns.time, alignment: .trailing)
             CloseButton(hint: L.t(.closeConnection, locale), action: close)
                 .opacity(hovering ? 1 : 0.35)
         }

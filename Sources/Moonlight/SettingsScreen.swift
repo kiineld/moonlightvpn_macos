@@ -20,7 +20,7 @@ struct SettingsScreen: View {
         // overflows first on a short window.
         ScrollViewReader { scroller in
             PageScroll {
-                columns.rise(0, page)
+                columns
             }
             // The helper may have been replaced or removed since this screen
             // last looked; checked off the main thread, never while drawing.

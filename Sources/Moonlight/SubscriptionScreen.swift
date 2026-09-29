@@ -13,7 +13,7 @@ struct SubscriptionScreen: View {
         PageScroll {
             VStack(spacing: 14) {
                 if let announce = tunnel.info.announce {
-                    AnnounceBanner(text: announce).rise(0, page)
+                    AnnounceBanner(text: announce)
                 }
                 columns
             }
@@ -23,12 +23,12 @@ struct SubscriptionScreen: View {
     private var columns: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 14) {
-                planCard.rise(0, page)
-                trafficCard.rise(0.06, page)
+                planCard
+                trafficCard
             }
             VStack(spacing: 14) {
-                refreshRow.rise(0.1, page)
-                actionRows.rise(0.16, page)
+                refreshRow
+                actionRows
             }
             .frame(width: 360)
         }
@@ -166,9 +166,20 @@ struct SubscriptionScreen: View {
                 subtitle: L.t(.extendSubtitle, locale),
                 trailing: .externalLink
             ) {
-                // The service's own page for this subscription when it names
-                // one; the bot otherwise.
-                NSWorkspace.shared.open(tunnel.info.webPageURL ?? AppConfig.telegramBotURL)
+                // Always the bot: it is where a plan is paid for. The page a
+                // subscription names for itself shows the plan, and sent people
+                // looking for a way to pay that is not there.
+                NSWorkspace.shared.open(AppConfig.telegramBotURL)
+            }
+            RowDivider(leading: 74)
+            ActionRow(
+                icon: .circleUser,
+                fill: palette.cat3,
+                title: L.t(.personalAccount, locale),
+                subtitle: L.t(.personalAccountSub, locale),
+                trailing: .externalLink
+            ) {
+                NSWorkspace.shared.open(AppConfig.cabinetURL)
             }
             // One subscription at a time: importing replaces it, so offering
             // to *add* one beside an active plan promised something the app

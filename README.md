@@ -170,8 +170,13 @@ it costs a `libproc` lookup per connection, and without it every row reads "—"
 Deliberately. Every transition tried — a crossfade, or `.identity` on the
 removal — keeps the outgoing screen in the hierarchy for the length of the
 animation, so the previous page shows *through* the new one and reads as a
-blink. The page swaps at once and the incoming screen plays its own entrance,
-which starts only after the old one is gone.
+blink. The page swaps at once and plays an entrance, which starts only after
+the old one is gone — one entrance for every page, header included, applied at
+the root (`PageEntrance`): the page fades in as it settles the last few points
+into place, on the standard curve. The screens used to carry their own, and no
+two pages arrived alike. On macOS 14 and later the curve is scoped to the fade
+and the offset alone, so a page that centres itself on arrival starts centred
+rather than sliding there.
 
 ### One core, one controller port
 
@@ -246,37 +251,58 @@ force-quit. Scheduling the call on the run loop avoids it.
 Versions compare numerically, so 1.0.10 beats 1.0.9; a string comparison gets
 that backwards.
 
-## Split tunnelling
+## Rules
 
-Two ways in to one list of rules. The app toggles are a convenience over
-`PROCESS-NAME`, matched on the **executable name** — `CFBundleExecutable`, not
-the bundle id, because the core sees a process. The rules panel is the general
-form:
+The rules page works the way Flowvy's does. **My rules** are the user's own:
+what to match, and where to send it — `DIRECT` (around the tunnel), `REJECT`,
+or one of the subscription's groups. Each goes before the subscription's rules
+(**Override**) or after them (**Extend**); mihomo takes the first rule that
+matches, so that is the whole of a rule's priority. They are kept by the app,
+apart from the subscription, so a refresh never touches them.
 
 | Kind | |
 |---|---|
-| `PROCESS-NAME` `PROCESS-NAME-REGEX` | by process, exact or regex |
-| `PROCESS-PATH` `PROCESS-PATH-REGEX` | by executable path |
-| `DOMAIN` `DOMAIN-SUFFIX` `DOMAIN-KEYWORD` `DOMAIN-REGEX` | by host |
-| `IP-CIDR` `GEOIP` | by address |
-| `GEOSITE` | by mihomo's site database |
-| `DST-PORT` | by destination port |
+| `DOMAIN` `DOMAIN-SUFFIX` `DOMAIN-KEYWORD` `DOMAIN-REGEX` `GEOSITE` | by host |
+| `IP-CIDR` `IP-CIDR6` `IP-ASN` `GEOIP` `SRC-IP-CIDR` | by address |
+| `DST-PORT` `SRC-PORT` | by port, a range, or several joined by `/` |
+| `PROCESS-NAME` `PROCESS-PATH` and their `-REGEX` forms | by process — TUN only |
+| `NETWORK` | tcp or udp |
+
+A process rule's value can be picked from the running and installed apps, which
+fills in the executable, its path, or a pattern for either. Rules can be
+switched off, edited, deleted and dragged into order; all of it is a draft until
+**Apply**, and Apply has the core check the config those rules would produce
+(`mihomo -t`) before anything is kept. A value is validated as it is entered
+too — regexes compile, ports and CIDRs are range-checked, commas are refused —
+because a bad rule does not fail on its own: the core refuses the **whole
+config**, and a connected tunnel would stop carrying anything.
+
+Extend rules go after the subscription's rules but before its catch-all
+`MATCH`; appended after it, as the grammar would literally have it, they could
+never match. A rule pointing at a group the subscription has since dropped is
+left out of the config, and shown in red, rather than taking the config down.
+Overrides also come before the split rules below. Rules apply in the "rules"
+routing mode, not in global or direct.
+
+**Subscription rules** lists the subscription's own rules as it wrote them —
+logical rules and `no-resolve` parsed properly, not split on commas — to read.
+
+## Split tunnelling
+
+The apps page is `PROCESS-NAME` rules composed with the subscription's routing,
+matched on the **executable name** — `CFBundleExecutable`, not the bundle id,
+because the core sees a process. Hand-written rules used to live beside the app
+switches; they moved to the rules page, where they can point anywhere. The
+first launch that has the rules page moves any it finds: from "all except"
+mode as rules to `DIRECT`, from "only these" as rules to the group the
+subscription routes through, and from "all traffic" — where they did nothing —
+switched off.
 
 The TUN constraint is **per rule, not per screen**. `PROCESS-*` rules need the
 core to identify the process behind a connection, which only TUN can do — under
 a system proxy the core is handed a socket with no process behind it, so those
 rules are dropped from the generated config rather than written and silently
 never matched. Domain, address and port rules work in both modes.
-
-`find-process-mode` is only switched on when a process rule is actually present:
-finding the process costs a syscall per connection, and a config of domain rules
-does not need it.
-
-A value is validated before it can be added — regexes are compiled, ports and
-CIDRs are range-checked, and commas are refused because mihomo splits a rule on
-them. This matters more than it looks: a bad rule does not fail on its own, the
-core refuses the **whole config**, so the tunnel stops rather than the rule being
-skipped.
 
 The three modes are not symmetric, because preserving the panel's own routing
 means something different in each:
@@ -650,6 +676,7 @@ fork points these at its own endpoints without touching source:
 | `MLTelegramBotURL` | `TELEGRAM_BOT_URL` | "Open the Telegram bot", "Extend subscription" |
 | `MLTelegramChannelURL` | `TELEGRAM_CHANNEL_URL` | Settings → Our channel |
 | `MLSupportURL` | `SUPPORT_URL` | Settings → Support |
+| `MLCabinetURL` | `CABINET_URL` | Subscription → Personal account |
 | `MLReleasesURL` | `RELEASES_URL` | "Check for updates" |
 
 In CI these come from repository **variables** of the same name, which are set on
@@ -689,9 +716,9 @@ whichever client already holds it.
   been exercised is a session left connected with the machine's own traffic
   going through it.
 - **Not notarised.** See *First launch*.
-- The entrance stagger is attached with `.animation(_:value:)` rather than
-  `withAnimation`, so if the animation is dropped the card appears without
-  sliding. The alternative left cards stuck at zero opacity.
+- The page entrance is attached to the view rather than fired with
+  `withAnimation` from `onAppear`, so if the animation is dropped the page
+  appears without moving. The alternative left pages stuck at zero opacity.
 - Pasting a bare `vless://` link imports nothing; the import path expects a
   subscription URL. Single-node import is not implemented.
 - Reconnect-on-network-change is not implemented.
