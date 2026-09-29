@@ -55,6 +55,12 @@ final class AppSettings: ObservableObject {
     /// re-evaluate.
     @Published private(set) var helperGeneration = 0
 
+    /// TUN was asked for somewhere without the helper, and the user was sent
+    /// to Settings to install it: Settings points at the helper, and switches
+    /// to TUN once it is in. Not saved — it means something only on the way
+    /// there.
+    @Published var tunAwaitingHelper = false
+
     var palette: Palette { theme == .dark ? .dark : .light }
 
     init(preferences: Preferences = .shared) {

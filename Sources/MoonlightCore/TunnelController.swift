@@ -17,12 +17,9 @@ public final class TunnelController: ObservableObject {
     @Published public private(set) var nodes: [Node] = []
     @Published public private(set) var info = SubscriptionInfo()
     @Published public private(set) var subscriptionSource: SubscriptionClient.Source?
-    @Published public private(set) var uptime: Int = 0
-    /// Bytes moved by this session, from the core's own counters.
-    @Published public private(set) var sessionUp: Int64 = 0
-    @Published public private(set) var sessionDown: Int64 = 0
-    @Published public private(set) var rateUp: Int64 = 0
-    @Published public private(set) var rateDown: Int64 = 0
+    /// Uptime and speeds, which tick every second — see ``TrafficMeter`` for
+    /// why they are not published here.
+    public let meter = TrafficMeter()
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var isPinging = false
     /// Nodes whose probe has not come back yet in the current pass.
@@ -41,6 +38,11 @@ public final class TunnelController: ObservableObject {
     @Published public var autoSelect: Bool
     /// Rules, everything through the server, or nothing — see ``RoutingMode``.
     @Published public private(set) var routingMode: RoutingMode
+    /// How traffic reaches the core: the system proxy, or TUN through the
+    /// helper. Published rather than read from the preferences, so a switch
+    /// made while disconnected — which changes nothing else — still redraws
+    /// the controls showing it.
+    @Published public private(set) var tunnelMode: TunnelMode
 
     // MARK: Collaborators
 
@@ -63,6 +65,14 @@ public final class TunnelController: ObservableObject {
     private var selectorGroup: String?
     private var trafficTask: Task<Void, Never>?
     private var uptimeTimer: Timer?
+    /// The idle core's start while it is under way, so a second caller waits
+    /// for it instead of starting another — see ``ensureCoreRunning()``.
+    private var coreStartup: Task<Bool, Never>?
+    /// Set while one core hands over to another: the idle one stopping for
+    /// TUN's privileged one, or either stopping on a disconnect. That work
+    /// waits off the main thread, and an idle core started in the gap — by a
+    /// ping or a refresh — would take the ports the other one needs.
+    private var coreHandover = false
     private var startedAt: Date?
     /// Which transport actually started the core, so teardown undoes the same
     /// one even if the preference changed while connected.
@@ -95,6 +105,7 @@ public final class TunnelController: ObservableObject {
         selectedNode = preferences.selectedNode
         autoSelect = preferences.autoSelect
         routingMode = preferences.routingMode
+        tunnelMode = preferences.tunnelMode
         lastRefresh = preferences.lastRefresh
         // Cached figures outlive the subscription they describe, and a fresh
         // install that inherited them from a removed plan would show days and
@@ -119,11 +130,14 @@ public final class TunnelController: ObservableObject {
         }
 
         recoverFromCrash()
-        updateRedactions()
 
         // Warm the core as soon as there is a subscription, so the first latency
-        // pass is instant rather than paying for a cold start.
-        Task { await ensureCoreRunning() }
+        // pass is instant rather than paying for a cold start. The redactions
+        // go first: the core's log quotes server addresses.
+        Task {
+            await updateRedactions()
+            await ensureCoreRunning()
+        }
         Task { await refreshHelperStatus() }
     }
 
@@ -152,7 +166,6 @@ public final class TunnelController: ObservableObject {
     public var hasCachedSubscription: Bool {
         FileManager.default.fileExists(atPath: panelURL.path)
     }
-    public var tunnelMode: TunnelMode { preferences.tunnelMode }
     public var helperInstalled: Bool { HelperInstaller.isInstalled && helper.isInstalled }
 
     /// Whether the installed helper is this build's — its program and the core
@@ -209,6 +222,40 @@ public final class TunnelController: ObservableObject {
     /// The core's own log tail, for the settings screen's diagnostics.
     public var coreLog: String {
         activeMode == .tun ? ((try? helper.status().log) ?? "") : core.recentLog
+    }
+
+    /// ``coreLog``, read off the main thread: in TUN mode it is a round trip
+    /// to the helper.
+    private func readCoreLog() async -> String {
+        let helper = helper, core = core, tun = activeMode == .tun
+        return await offMain { tun ? ((try? helper.status().log) ?? "") : core.recentLog }
+    }
+
+    /// Runs blocking work — a child process, a round trip to the helper, a
+    /// parse of the whole subscription — off the main actor.
+    ///
+    /// All of it used to run on the main thread. A connect ran `networksetup`
+    /// seven times per network service, the helper's stop waits for its core
+    /// to exit, `mihomo -t`
+    /// loads the whole config, and the subscription was parsed three times
+    /// over: the window froze for a second or more at exactly the moment the
+    /// moon was animating, and again after every refresh.
+    nonisolated private func offMain<T: Sendable>(
+        _ work: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        try await Task.detached(priority: .userInitiated, operation: work).value
+    }
+
+    nonisolated private func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        await Task.detached(priority: .userInitiated, operation: work).value
+    }
+
+    /// ``offMain(_:)`` with idle-core starts held off until it is done — see
+    /// ``coreHandover``.
+    private func handingOver<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        coreHandover = true
+        defer { coreHandover = false }
+        return try await offMain(work)
     }
 
     // MARK: - Subscription
@@ -308,7 +355,7 @@ public final class TunnelController: ObservableObject {
             lastRefresh = Date()
             preferences.lastRefresh = lastRefresh
             issue = nil
-            updateRedactions()
+            await updateRedactions()
 
             if state.isConnected || core.isRunning {
                 // Reload in place rather than reconnecting: a refresh should not
@@ -322,7 +369,7 @@ public final class TunnelController: ObservableObject {
                 // when there is nothing better on screen. Swapping a selector
                 // list for the raw one and back made every refresh flicker
                 // between two different lists and counts.
-                if nodes.isEmpty { nodes = try nodesFromPanelConfig() }
+                if nodes.isEmpty { nodes = try await nodesFromPanelConfig() }
                 await ensureCoreRunning()
             }
             return true
@@ -353,20 +400,37 @@ public final class TunnelController: ObservableObject {
     @discardableResult
     public func ensureCoreRunning() async -> Bool {
         guard hasSubscription else { return false }
+        // One start at a time. The checks and the start wait off the main
+        // thread, so two callers — the warm-up at launch and a ping, say —
+        // could otherwise both find no core and both start one, and the second
+        // start stops the first.
+        if let pending = coreStartup { return await pending.value }
+        let startup = Task { await startIdleCore() }
+        coreStartup = startup
+        defer { coreStartup = nil }
+        return await startup.value
+    }
+
+    private func startIdleCore() async -> Bool {
+        guard !coreHandover else { return false }
+        let helper = helper, core = core, configURL = configURL, panelURL = panelURL
+        let overrides = overrides(mode: .systemProxy)
         // The helper's core counts: in TUN mode it is the one answering. Checked
         // regardless of `activeMode`, because a core left running by a previous
         // session is running whether or not this one knows about it.
-        if (try? helper.status().running) == true { return true }
-        if core.isRunning { return true }
+        let running = await offMain { (try? helper.status().running) == true || core.isRunning }
+        if running { return true }
 
         do {
-            let yaml = try MihomoConfig.build(
-                panelYAML: try loadPanelYAML(),
-                overrides: overrides(mode: .systemProxy)
-            )
-            try yaml.write(to: configURL, atomically: true, encoding: .utf8)
-            try core.validate(configPath: configURL)
-            try core.start(configPath: configURL)
+            try await offMain {
+                let yaml = try MihomoConfig.build(
+                    panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                    overrides: overrides
+                )
+                try yaml.write(to: configURL, atomically: true, encoding: .utf8)
+                try core.validate(configPath: configURL)
+                try core.start(configPath: configURL)
+            }
         } catch {
             issue = TunnelIssue.classify(error)
             LogStore.shared.client("Core would not start: \(error.localizedDescription)", level: .error)
@@ -405,22 +469,32 @@ public final class TunnelController: ObservableObject {
                 guard await ensureCoreRunning() else {
                     throw MihomoProcess.Failure.exited(0, "core unavailable")
                 }
+                // Recorded before anything is changed, so a crash between the
+                // two still leaves something to restore at the next launch.
                 if preferences.proxySnapshot == nil {
-                    preferences.proxySnapshot = SystemProxy.snapshot()
+                    preferences.proxySnapshot = await offMain { SystemProxy.snapshot() }
                 }
-                SystemProxy.enable(port: preferences.mixedPort)
+                let port = preferences.mixedPort
+                await offMain { SystemProxy.enable(port: port) }
 
             case .tun:
                 await refreshHelperStatus()
                 if !helperIsCurrent { try await updateHelper() }
-                // TUN needs the core to run as root, so the idle one has to go.
-                core.stop()
-                let yaml = try MihomoConfig.build(
-                    panelYAML: try loadPanelYAML(),
-                    overrides: overrides(mode: .tun)
-                )
-                try helper.version()
-                try helper.start(config: yaml)
+                // An idle core still starting would come up after the stop
+                // below and hold the ports the privileged one needs.
+                if let pending = coreStartup { _ = await pending.value }
+                let core = core, helper = helper, panelURL = panelURL
+                let overrides = overrides(mode: .tun)
+                try await handingOver {
+                    // TUN needs the core to run as root, so the idle one has to go.
+                    core.stop()
+                    let yaml = try MihomoConfig.build(
+                        panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                        overrides: overrides
+                    )
+                    try helper.version()
+                    try helper.start(config: yaml)
+                }
                 // From here the helper's core is the one to read and to stop.
                 // Set only after the checks below, `coreLog` read the idle
                 // core's log, so a TUN that failed to come up — another VPN
@@ -434,14 +508,16 @@ public final class TunnelController: ObservableObject {
                 // already flowing is exactly what that timeout governs.
                 LogStore.shared.followCore(api)
                 guard await api.waitUntilReady(timeout: 90) else {
-                    throw MihomoProcess.Failure.exited(0, coreLog)
+                    let log = await readCoreLog()
+                    throw MihomoProcess.Failure.exited(0, log)
                 }
                 // A TUN interface that fails to come up does not stop the core:
                 // it keeps running and keeps answering its API, so without this
                 // the app reports a healthy tunnel while nothing is routed.
                 try await Task.sleep(nanoseconds: 700_000_000)
-                if let reason = MihomoProcess.tunFailure(in: coreLog) {
-                    throw TunFailure(routesTaken: MihomoProcess.routesTaken(in: coreLog),
+                let log = await readCoreLog()
+                if let reason = MihomoProcess.tunFailure(in: log) {
+                    throw TunFailure(routesTaken: MihomoProcess.routesTaken(in: log),
                                      reason: reason)
                 }
             }
@@ -451,9 +527,7 @@ public final class TunnelController: ObservableObject {
             await applySelection()
 
             startedAt = Date()
-            uptime = 0
-            sessionUp = 0
-            sessionDown = 0
+            meter.start()
             beginMonitoring()
             state = .connected
             LogStore.shared.client("Connected — \(selectedNode ?? "auto")")
@@ -507,27 +581,31 @@ public final class TunnelController: ObservableObject {
         trafficTask = nil
         uptimeTimer?.invalidate()
         uptimeTimer = nil
+        let mode = activeMode
 
         // Only what this app changed goes back. With no snapshot this used to
         // switch *every* proxy off on every network service — TUN never sets
         // one, so each TUN disconnect turned off any other client's proxy (or a
         // company one), and cost three `networksetup` runs per service.
         if let snapshot = preferences.proxySnapshot {
-            SystemProxy.restore(snapshot)
+            await offMain { SystemProxy.restore(snapshot) }
             preferences.proxySnapshot = nil
-        } else if activeMode == .systemProxy {
-            SystemProxy.disable(pointingAt: preferences.mixedPort)
+        } else if mode == .systemProxy {
+            let port = preferences.mixedPort
+            await offMain { SystemProxy.disable(pointingAt: port) }
         }
 
-        switch activeMode {
-        case .tun: try? helper.stop()
-        case .systemProxy, .none: core.stop()
+        // Both wait for the core to exit, for up to five seconds.
+        let helper = helper, core = core
+        coreHandover = true
+        switch mode {
+        case .tun: await offMain { _ = try? helper.stop() }
+        case .systemProxy, .none: await offMain { core.stop() }
         }
+        coreHandover = false
         activeMode = nil
 
-        uptime = 0
-        rateUp = 0
-        rateDown = 0
+        meter.stop()
         startedAt = nil
     }
 
@@ -597,9 +675,8 @@ public final class TunnelController: ObservableObject {
     /// The RESTful API reports a bare type — `Vless`, `Hysteria2` — but the
     /// panel's own list distinguishes Reality from plain TLS, and that is the
     /// difference a user picks on. Only the config has it.
-    private func protocolLabels() -> [String: String] {
-        guard let yaml = try? loadPanelYAML(),
-              let root = try? Yams.load(yaml: yaml) as? [String: Any],
+    nonisolated private static func protocolLabels(panelYAML yaml: String) -> [String: String] {
+        guard let root = try? Yams.load(yaml: yaml) as? [String: Any],
               let proxies = root["proxies"] as? [[String: Any]] else { return [:] }
 
         var labels: [String: String] = [:]
@@ -625,11 +702,17 @@ public final class TunnelController: ObservableObject {
 
     /// The subscription's server descriptions, or the last ones it carried
     /// when this copy came without them.
-    private func currentDescriptions() -> [String: String] {
-        let fresh = MihomoConfig.serverDescriptions(panelYAML: (try? loadPanelYAML()) ?? "")
+    private func currentDescriptions(fresh: [String: String]) -> [String: String] {
         guard !fresh.isEmpty else { return preferences.serverDescriptions }
         preferences.serverDescriptions = fresh
         return fresh
+    }
+
+    /// What ``discoverSelector()`` needs from the YAML on disk.
+    private struct SelectorInputs: Sendable {
+        var rules: [String]?
+        var labels: [String: String]
+        var descriptions: [String: String]
     }
 
     private func discoverSelector() async throws {
@@ -638,10 +721,21 @@ public final class TunnelController: ObservableObject {
 
         // The config's rules are the authority on which group is *the* one; the
         // running core does not expose them, so the generated config is re-read.
-        let yaml = activeMode == .tun
-            ? try loadPanelYAML()
-            : (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        if let rules = (try? Yams.load(yaml: yaml) as? [String: Any])?["rules"] as? [String] {
+        // Everything read from YAML is parsed off the main thread, and the
+        // subscription only once.
+        let panelURL = panelURL
+        let rulesURL = activeMode == .tun ? panelURL : configURL
+        let inputs = await offMain { () -> SelectorInputs in
+            let panel = (try? String(contentsOf: panelURL, encoding: .utf8)) ?? ""
+            let config = rulesURL == panelURL
+                ? panel : (try? String(contentsOf: rulesURL, encoding: .utf8)) ?? ""
+            return SelectorInputs(
+                rules: (try? Yams.load(yaml: config) as? [String: Any])?["rules"] as? [String],
+                labels: Self.protocolLabels(panelYAML: panel),
+                descriptions: MihomoConfig.serverDescriptions(panelYAML: panel)
+            )
+        }
+        if let rules = inputs.rules {
             let name = MihomoConfig.primarySelectorName(
                 groups: selectors.map { ["name": $0.name, "type": "select"] },
                 rules: rules
@@ -658,7 +752,7 @@ public final class TunnelController: ObservableObject {
 
         // A group has no transport of its own, so it borrows the one its members
         // share — which is what the panel's own list shows for it.
-        let labels = protocolLabels()
+        let labels = inputs.labels
         let membership = Dictionary(groups.map { ($0.name, $0.options) }) { first, _ in first }
         for index in listed.indices {
             if let label = labels[listed[index].name] {
@@ -667,7 +761,7 @@ public final class TunnelController: ObservableObject {
                 listed[index].protocolLabel = members.lazy.compactMap { labels[$0] }.first
             }
         }
-        let descriptions = currentDescriptions()
+        let descriptions = currentDescriptions(fresh: inputs.descriptions)
         for index in listed.indices {
             listed[index].serverDescription = descriptions[listed[index].name]
         }
@@ -689,24 +783,31 @@ public final class TunnelController: ObservableObject {
         let mode: TunnelMode = state.isConnected
             ? (activeMode ?? preferences.tunnelMode)
             : .systemProxy
-        let yaml = try MihomoConfig.build(
-            panelYAML: try loadPanelYAML(),
-            overrides: overrides(mode: mode)
-        )
+        let panelURL = panelURL, overrides = overrides(mode: mode)
+        let yaml = try await offMain {
+            try MihomoConfig.build(
+                panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                overrides: overrides
+            )
+        }
         switch mode {
         case .tun where state.isConnected:
             // The helper owns its config file, so a reload there is a restart of
             // the core it supervises — the tunnel blips, which is the cost of not
             // letting an unprivileged process write a root-read path.
-            try helper.start(config: yaml)
+            let helper = helper
+            try await offMain { try helper.start(config: yaml) }
             _ = await api.waitUntilReady()
             // A new process: the old one's log and traffic streams ended with
             // it, which froze the speed readout at its last value.
             LogStore.shared.followCore(api)
             startTrafficStream()
         default:
-            try yaml.write(to: configURL, atomically: true, encoding: .utf8)
-            try core.validate(configPath: configURL)
+            let core = core, configURL = configURL
+            try await offMain {
+                try yaml.write(to: configURL, atomically: true, encoding: .utf8)
+                try core.validate(configPath: configURL)
+            }
             try await api.reload(path: configURL.path)
         }
         try await discoverSelector()
@@ -843,6 +944,7 @@ public final class TunnelController: ObservableObject {
     public func setTunnelMode(_ mode: TunnelMode) async {
         guard mode != preferences.tunnelMode else { return }
         preferences.tunnelMode = mode
+        tunnelMode = mode
         // A mode change swaps which process owns the core, so it cannot be a
         // live patch — it is a reconnect, and only if one was up.
         if state.isConnected {
@@ -881,7 +983,7 @@ public final class TunnelController: ObservableObject {
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let startedAt = self.startedAt else { return }
-                self.uptime = Int(Date().timeIntervalSince(startedAt))
+                self.meter.uptime = Int(Date().timeIntervalSince(startedAt))
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -899,10 +1001,7 @@ public final class TunnelController: ObservableObject {
             for await sample in api.trafficStream() {
                 if Task.isCancelled { break }
                 await MainActor.run {
-                    self.rateUp = sample.up
-                    self.rateDown = sample.down
-                    self.sessionUp += sample.up
-                    self.sessionDown += sample.down
+                    self.meter.record(up: sample.up, down: sample.down)
                 }
             }
         }
@@ -952,18 +1051,22 @@ public final class TunnelController: ObservableObject {
     /// Tells the log what never to show: the subscription link, its host and
     /// its token, and every server address the subscription names. Core errors
     /// quote server addresses (`dial tcp …`), and the log is on screen.
-    private func updateRedactions() {
-        var secrets: [String] = []
-        if let link = preferences.subscriptionURL, let url = SubscriptionClient.normalize(link) {
-            secrets.append(link)
-            secrets.append(url.absoluteString)
-            if let host = url.host { secrets.append(host) }
-            secrets += url.pathComponents.filter { $0.count >= 8 }
-        }
-        if let yaml = try? loadPanelYAML(),
-           let root = try? Yams.load(yaml: yaml) as? [String: Any],
-           let proxies = root["proxies"] as? [[String: Any]] {
-            secrets += proxies.compactMap { $0["server"] as? String }
+    private func updateRedactions() async {
+        let link = preferences.subscriptionURL, panelURL = panelURL
+        let secrets = await offMain { () -> [String] in
+            var secrets: [String] = []
+            if let link, let url = SubscriptionClient.normalize(link) {
+                secrets.append(link)
+                secrets.append(url.absoluteString)
+                if let host = url.host { secrets.append(host) }
+                secrets += url.pathComponents.filter { $0.count >= 8 }
+            }
+            if let yaml = try? String(contentsOf: panelURL, encoding: .utf8),
+               let root = try? Yams.load(yaml: yaml) as? [String: Any],
+               let proxies = root["proxies"] as? [[String: Any]] {
+                secrets += proxies.compactMap { $0["server"] as? String }
+            }
+            return secrets
         }
         LogStore.shared.setRedactions(secrets)
     }
@@ -990,19 +1093,18 @@ public final class TunnelController: ObservableObject {
         )
     }
 
-    private func loadPanelYAML() throws -> String {
-        try String(contentsOf: panelURL, encoding: .utf8)
-    }
-
-    private func nodesFromPanelConfig() throws -> [Node] {
-        let yaml = try loadPanelYAML()
-        guard let root = try Yams.load(yaml: yaml) as? [String: Any],
-              let proxies = root["proxies"] as? [[String: Any]] else { return [] }
-        return proxies.compactMap { proxy in
-            guard let name = proxy["name"] as? String else { return nil }
-            return Node(name: name,
-                        type: proxy["type"] as? String ?? "unknown",
-                        server: proxy["server"] as? String)
+    private func nodesFromPanelConfig() async throws -> [Node] {
+        let panelURL = panelURL
+        return try await offMain {
+            let yaml = try String(contentsOf: panelURL, encoding: .utf8)
+            guard let root = try Yams.load(yaml: yaml) as? [String: Any],
+                  let proxies = root["proxies"] as? [[String: Any]] else { return [] }
+            return proxies.compactMap { proxy in
+                guard let name = proxy["name"] as? String else { return nil }
+                return Node(name: name,
+                            type: proxy["type"] as? String ?? "unknown",
+                            server: proxy["server"] as? String)
+            }
         }
     }
 

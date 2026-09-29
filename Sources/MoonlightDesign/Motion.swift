@@ -23,6 +23,27 @@ public enum Motion {
     /// place rather than flying in.
     public static let riseDistance: CGFloat = 8
 
+    /// The sidebar's selection is the one thing that moves as a liquid rather
+    /// than a solid: the edge heading for the new row leads on a quick spring
+    /// and the other follows on the standard one, so the glass stretches
+    /// towards where it is going and gathers itself up on arrival. These are
+    /// the two springs' response times, in seconds, both damped like
+    /// ``standard``.
+    public static let liquidLead = 0.26
+    public static let liquidTrail = 0.44
+    public static let liquidDamping = 0.9
+
+    /// How far along a spring with this response is, `t` seconds in: 0 at the
+    /// start, 1 once settled — for motion driven by a timeline rather than by
+    /// an `Animation`.
+    public static func spring(_ t: Double, response: Double, damping: Double = liquidDamping) -> Double {
+        guard t > 0 else { return 0 }
+        let omega = 2 * .pi / response
+        let decay = damping * omega
+        let ringing = omega * (1 - damping * damping).squareRoot()
+        return 1 - exp(-decay * t) * (cos(ringing * t) + decay / ringing * sin(ringing * t))
+    }
+
     // Press scales — barely there, so a press reads as a press and not a pop.
     public static let pressCard: CGFloat = 0.99
     public static let pressButton: CGFloat = 0.975

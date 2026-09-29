@@ -19,13 +19,15 @@ struct SettingsScreen: View {
         // The design's content area scrolls; settings is the screen that
         // overflows first on a short window.
         ScrollViewReader { scroller in
-            ScrollView {
-                columns.padding(.bottom, 8).rise(0, page)
+            PageScroll {
+                columns.rise(0, page)
             }
-            .mlScrollIndicators(hidden: true)
             // The helper may have been replaced or removed since this screen
             // last looked; checked off the main thread, never while drawing.
             .task { await tunnel.refreshHelperStatus() }
+            // Sent here to install the helper for TUN, and left without doing
+            // it: the next visit is an ordinary one.
+            .onDisappear { settings.tunAwaitingHelper = false }
             // The update card is the last thing on the page, and its progress
             // opens beneath it — below the window's edge on a short window.
             .onChange(of: updater.state.isUnderWay) { underWay in
@@ -95,6 +97,9 @@ struct SettingsScreen: View {
     private var helperRow: some View {
         // Read once per render rather than per use: it can launch the core.
         let stale = tunnel.helperInstalled && !tunnel.helperIsCurrent
+        // Arrived from the connect page's TUN switch: the install is what
+        // they came for, so it is the one lit control on the page.
+        let wanted = settings.tunAwaitingHelper && !tunnel.helperInstalled
         return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(stale ? L.t(.helperStale, locale)
@@ -123,16 +128,19 @@ struct SettingsScreen: View {
                     .font(.ml(12.5, .heavy))
                     .lineLimit(1)
                     .fixedSize()
-                    .foregroundStyle(palette.text)
+                    .foregroundStyle(wanted ? palette.textOnAccent : palette.text)
                     .padding(.horizontal, 15)
                     .frame(height: 36)
-                    .mlGlass(.capsule, fallback: palette.surface2)
+                    .mlGlass(.capsule, tint: wanted ? palette.accent : nil,
+                             fallback: wanted ? palette.accent : palette.surface2)
             }
             .pressButton()
             .disabled(helperBusy)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 15)
+        .background(palette.text.opacity(wanted ? 0.05 : 0))
+        .animation(Motion.paint, value: wanted)
     }
 
     private func installHelper() async {
@@ -147,6 +155,11 @@ struct SettingsScreen: View {
             // negative.
             try await tunnel.updateHelper()
             settings.bumpHelperState()
+            // Installed because TUN was asked for: now it can have it.
+            if settings.tunAwaitingHelper, tunnel.helperInstalled {
+                settings.tunAwaitingHelper = false
+                await tunnel.setTunnelMode(.tun)
+            }
         } catch HelperInstaller.Failure.cancelled {
             helperError = nil
         } catch {

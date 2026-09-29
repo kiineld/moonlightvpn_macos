@@ -7,7 +7,8 @@ enum Page: Hashable {
 }
 
 struct RootView: View {
-    @EnvironmentObject var tunnel: TunnelController
+    // Not the tunnel: nothing here reads it, and observing it re-ran the whole
+    // window — sidebar, page and all — on every change it published.
     @EnvironmentObject var settings: AppSettings
     /// Where AppKit put the traffic lights, measured rather than assumed.
     @State private var titleBarCentre: CGFloat = 14
@@ -20,6 +21,10 @@ struct RootView: View {
     static let gutter: CGFloat = 8
     /// The space under every page, down to the window's bottom edge.
     static let pageBottomInset: CGFloat = 24
+    /// The margin either side of every page.
+    static let pageGutter: CGFloat = 28
+    /// The space between a page's header and its content.
+    static let pageTopInset: CGFloat = 18
 
     /// The traffic lights sit on the bare window above the sidebar, so the
     /// sidebar starts just under their row. Sized from where AppKit actually
@@ -66,8 +71,8 @@ struct RootView: View {
                 case .connections: ConnectionsScreen(page: $page)
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.top, page == .connect ? 26 : 18)
+            .padding(.horizontal, Self.pageGutter)
+            .padding(.top, page == .connect ? 26 : Self.pageTopInset)
             .padding(.bottom, Self.pageBottomInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -97,20 +102,7 @@ private struct Sidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
-
-            NavItem(icon: .power, title: L.t(.navConnect, locale),
-                    active: page == .connect, collapsed: collapsed) { page = .connect }
-            NavItem(icon: .sparkles, title: L.t(.navSubscription, locale),
-                    active: page == .subscription || page == .importSubscription,
-                    collapsed: collapsed) { page = .subscription }
-            NavItem(icon: .layers, title: L.t(.navApps, locale),
-                    active: page == .apps, collapsed: collapsed) { page = .apps }
-            NavItem(icon: .activity, title: L.t(.navConnections, locale),
-                    active: page == .connections, collapsed: collapsed) { page = .connections }
-            NavItem(icon: .settings, title: L.t(.navSettings, locale),
-                    active: page == .settings || page == .logs,
-                    collapsed: collapsed) { page = .settings }
-
+            navigation
             Spacer(minLength: 12)
             if collapsed { collapsedPlan } else { planCard }
         }
@@ -136,6 +128,40 @@ private struct Sidebar: View {
     }
 
     private static let resize = Motion.standard
+    private static let navSpacing: CGFloat = 6
+
+    private static let pages: [(icon: Icon, title: L.Key, page: Page)] = [
+        (.power, .navConnect, .connect),
+        (.sparkles, .navSubscription, .subscription),
+        (.layers, .navApps, .apps),
+        (.activity, .navConnections, .connections),
+        (.settings, .navSettings, .settings),
+    ]
+
+    /// The row that owns the current page. Import belongs to the subscription,
+    /// and the log to settings, which is where each is opened from.
+    private var selected: Int {
+        switch page {
+        case .connect: return 0
+        case .subscription, .importSubscription: return 1
+        case .apps: return 2
+        case .connections: return 3
+        case .settings, .logs: return 4
+        }
+    }
+
+    private var navigation: some View {
+        VStack(spacing: Self.navSpacing) {
+            ForEach(Array(Self.pages.enumerated()), id: \.offset) { index, item in
+                NavItem(icon: item.icon, title: L.t(item.title, locale),
+                        active: index == selected, collapsed: collapsed) { page = item.page }
+            }
+        }
+        .background(
+            LiquidSelection(index: selected, count: Self.pages.count,
+                            row: NavItem.height, spacing: Self.navSpacing)
+        )
+    }
 
     /// The wordmark, or the logo alone when collapsed. The collapse control is
     /// the tab on the sidebar's edge, not a button in here.
@@ -257,6 +283,8 @@ private struct NavItem: View {
     var collapsed = false
     let action: () -> Void
 
+    static let height: CGFloat = 38
+
     @State private var hovering = false
 
     var body: some View {
@@ -274,28 +302,118 @@ private struct NavItem: View {
             }
             .padding(.horizontal, collapsed ? 0 : 12)
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
-            .frame(height: 38)
-            // The active glass is *not* animated. Animating the selection
-            // crossfaded the outgoing item against the incoming one for a few
-            // frames — the blink. A selection that moves instantly cannot
-            // smear; only the hover wash, which never overlaps a selection, is
-            // worth easing. SwiftUI's own glass, like the sidebar's, so it
-            // narrows with the sidebar instead of snapping.
+            .frame(height: Self.height)
+            // The selection is not drawn here — it is the one piece of glass
+            // behind every row (`LiquidSelection`), which flows between them.
+            // Only the hover wash is the row's own.
             .background {
-                if active {
-                    Color.clear.mlSoftGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
-                                            wash: palette.text.opacity(0.07))
-                } else {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(palette.text.opacity(hovering ? 0.05 : 0))
-                }
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(palette.text.opacity(hovering && !active ? 0.05 : 0))
             }
             .contentShape(Rectangle())
         }
         .pressCard()
         .onHover { hovering = $0 }
-        .animation(hovering ? Motion.paint : nil, value: hovering)
+        .animation(Motion.paint, value: hovering)
+        .animation(Motion.paint, value: active)
         .help(collapsed ? title : "")
+    }
+}
+
+/// The sidebar's selection: one piece of glass behind the rows that flows from
+/// row to row.
+///
+/// Its two edges move on different springs. The edge heading for the new row
+/// leads and the other follows, so on the way the glass stretches out towards
+/// where it is going, thins a little as it does, and gathers itself up when it
+/// arrives — a drop of liquid rather than a tile sliding. It used to be a glass
+/// background on the active row, which could only jump: animating that
+/// crossfaded two pieces of glass and read as a blink.
+///
+/// Driven by a timeline rather than by `withAnimation`. Two edges changed in
+/// two transactions with two curves still came out on one: SwiftUI animated
+/// the glass's frame as a whole, and it slid as a rigid tile. Here each edge
+/// is worked out from its own spring on every frame, and only while it moves.
+private struct LiquidSelection: View {
+    @Environment(\.palette) private var palette
+    let index: Int
+    let count: Int
+    let row: CGFloat
+    let spacing: CGFloat
+
+    @State private var travel: Travel
+    /// Whether the timeline ticks. Off at rest, so a still sidebar costs
+    /// nothing.
+    @State private var moving = false
+
+    /// Long enough for the slower spring to have settled.
+    private static let settle = 0.8
+
+    init(index: Int, count: Int, row: CGFloat, spacing: CGFloat) {
+        self.index = index
+        self.count = count
+        self.row = row
+        self.spacing = spacing
+        let edges = Edges(top: CGFloat(index) * (row + spacing), row: row)
+        _travel = State(initialValue: Travel(from: edges, to: edges, start: .distantPast))
+    }
+
+    private var column: CGFloat { CGFloat(count) * row + CGFloat(count - 1) * spacing }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: nil, paused: !moving)) { context in
+            let edges = travel.edges(at: context.date)
+            // Stretched, it thins a little, as a drop does.
+            let stretch = max(0, edges.bottom - edges.top - row)
+            Color.clear
+                .mlSoftGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
+                             wash: palette.text.opacity(0.07))
+                .padding(.horizontal, min(3, stretch * 0.04))
+                .padding(.top, edges.top)
+                .padding(.bottom, column - edges.bottom)
+        }
+        .onChange(of: index) { index in
+            // From wherever it is now, so a click mid-flight turns it round
+            // rather than making it jump.
+            let now = Date()
+            travel = Travel(from: travel.edges(at: now),
+                            to: Edges(top: CGFloat(index) * (row + spacing), row: row),
+                            start: now)
+            moving = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.settle) {
+                if travel.start == now { moving = false }
+            }
+        }
+    }
+
+    private struct Edges {
+        var top: CGFloat
+        var bottom: CGFloat
+
+        init(top: CGFloat, bottom: CGFloat) {
+            self.top = top
+            self.bottom = bottom
+        }
+
+        init(top: CGFloat, row: CGFloat) {
+            self.init(top: top, bottom: top + row)
+        }
+    }
+
+    private struct Travel {
+        var from: Edges
+        var to: Edges
+        var start: Date
+
+        /// The edge nearer the destination leads; the other follows.
+        func edges(at date: Date) -> Edges {
+            let t = date.timeIntervalSince(start)
+            let lead = CGFloat(Motion.spring(t, response: Motion.liquidLead))
+            let trail = CGFloat(Motion.spring(t, response: Motion.liquidTrail))
+            let down = to.top >= from.top
+            return Edges(top: from.top + (to.top - from.top) * (down ? trail : lead),
+                         bottom: from.bottom + (to.bottom - from.bottom) * (down ? lead : trail))
+        }
     }
 }
 

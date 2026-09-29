@@ -107,6 +107,11 @@ amount of entitlement work changes that for an unsigned app. The helper is a
 LaunchDaemon installed with **one** administrator prompt, because asking for a
 password on every connect is how people end up leaving TUN off.
 
+The transport is switched beside the state pill on the connect page as well as
+in Settings; switching while connected reconnects. Asking for TUN there with no
+helper installed goes to Settings, with the install lit, and TUN comes on once
+the helper is in.
+
 ### The helper's trust boundary
 
 A root daemon taking instructions over a socket is a privilege escalation
@@ -439,15 +444,15 @@ one download on first connect and saves ~24 MB in the bundle.
 **Black and white.** The interface is monochrome: a black canvas, surfaces of
 Liquid Glass, white type, and white as the one interactive colour — black in
 the light theme, which mirrors it. Colour is spent in exactly two places: the
-logo's lime tile, which is the brand and appears nowhere else, and the small
-signals that carry meaning — latency (green under 150 ms, yellow under 300,
+brand — the logo's lime tile, and the moon on the connect button once it is
+full — and the small signals that carry meaning — latency (green under 150 ms, yellow under 300,
 orange past it), errors, log levels. The token names are the ones every screen
 was written against; what they resolve to is what changed:
 
 - `accent` — fills (the primary button, active pills, a switch that is on)
 - `accentInk` — accent as type or a glyph
 - `textOnAccent` — type sitting on an accent fill
-- `brand` / `brandInk` — the logo tile and its moon, nothing else
+- `brand` / `brandInk` — the logo tile, and the full moon of a connected tunnel
 
 Icons are **lucide 0.468.0**, the set the design is drawn with, carried across as
 raw SVG path data rather than redrawn or swapped for SF Symbols, so stroke
@@ -461,12 +466,15 @@ ships `woff2`, which Core Text cannot register.
 
 **The connect control is the moon from the logo.** Disconnected it is the
 logo's crescent, dim, with its two stars; connected the cut slides off and it is
-a full moon, lit, and the stars fade. Changing state is the moon changing
-phase. The crescent is a disc with a second disc cut out of it
-(`.destinationOut`), not painted over, so the glass beneath shows through its
-dark side. While the tunnel connects or disconnects a thin orbit turns round it.
-The state pill under it leads to the connections screen; ping and refresh are
-icon buttons over the server list, the list they act on.
+a full moon, lit in the logo's own colour in both themes, and the stars fade.
+Changing state is the moon changing phase. The crescent is a disc with a second
+disc cut out of it (`.destinationOut`), not painted over, so the glass beneath
+shows through its dark side. While the tunnel connects or disconnects a thin
+orbit turns round it. The state pill under it leads to the connections screen,
+and beside it is the transport, proxy or TUN; ping and refresh are icon buttons
+over the server list, the list they act on. A refresh from there says how it
+went at the foot of the page — updated, or not and why, in the same neutral
+words as any other issue.
 
 The routing mode is mihomo's own `mode`, patched into the running core and
 written into every config it is built with; existing connections are closed
@@ -496,6 +504,24 @@ without an overshoot. Only changes with nothing moving in them (a colour, a
 hover wash) use `Motion.paint`, a short fade. The app used to carry six curves,
 two of them overshooting, and screens felt like different apps.
 
+The sidebar's selection is the one thing that moves as a liquid rather than a
+solid: a single piece of glass behind the rows, whose leading edge travels on a
+quick spring and trailing edge on the standard one, so it stretches towards the
+new row and gathers itself up there. It is driven by a timeline that ticks only
+while it moves — two edges animated with two `withAnimation` curves came out on
+one, and slid as a rigid tile.
+
+Connecting, disconnecting and refreshing block nothing on the main thread,
+which is the one that draws. `networksetup` (three reads and four writes per network service — a Mac with
+ten services ran some seventy of them on a connect), the helper's stop, which
+waits for its core, `mihomo -t`, and every parse of the subscription all run
+off it; they used to freeze the window at exactly the moment the moon was
+animating. The uptime and speeds, which tick every second, live on their own
+`TrafficMeter`, so a tick redraws the two labels that show them rather than
+every view watching the tunnel; and the app's scene observes neither the tunnel
+nor the log, which had it rebuilding its window and menus on every line the
+core logged.
+
 Spinners are driven by the clock (`TimelineView`), never by
 `repeatForever`. A repeating animation claims every other change in its
 transaction and every layout change while it runs, so a spinning refresh icon
@@ -514,6 +540,12 @@ tiles, the sidebar and its tab, the tray. A state is a tint on the glass —
 white for the primary button, a wash for a selection — never a colour painted
 over it. Before macOS 26 the same shapes are flat surfaces with a hairline, at
 the same sizes, so nothing moves between systems.
+
+Glass casts a soft shadow past its edge, and a scroll view clips what it holds.
+Pages that scroll (`PageScroll`) reach out to the window's edges and take their
+margins back inside, so the cards sit where they did and their shadows fade out
+before anything clips them — inset by the margins, the clip cut them off in
+straight grey lines, which the light theme's white canvas showed plainly.
 
 Glass needs something behind it to refract. Over a flat black canvas it drew as
 a grey slab with no edge, so the window is see-through: the canvas is the

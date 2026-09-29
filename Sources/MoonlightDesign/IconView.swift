@@ -23,13 +23,20 @@ public struct IconView: View {
             // scales with the glyph rather than staying a fixed device width.
             let scaled = strokeWidth * min(canvasSize.width, canvasSize.height) / 24
             let style = StrokeStyle(lineWidth: scaled, lineCap: .round, lineJoin: .round)
-            for d in icon.paths {
-                context.stroke(SVGPath(d).path(in: rect), with: .foregroundColor(d: ()), style: style)
+            for glyph in Self.parsed[icon] ?? [] {
+                context.stroke(glyph.path(in: rect), with: .foregroundColor(d: ()), style: style)
             }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
+
+    /// Every glyph's path data, parsed once. The canvas redraws whenever the
+    /// view around it re-renders, and parsing the `d` strings there meant a
+    /// server list re-parsed a dozen glyphs per row on every tick.
+    private static let parsed: [Icon: [SVGPath]] = Dictionary(
+        uniqueKeysWithValues: Icon.allCases.map { ($0, $0.paths.map(SVGPath.init)) }
+    )
 }
 
 private extension GraphicsContext.Shading {

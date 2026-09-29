@@ -67,7 +67,8 @@ public enum L {
         case language, notifications, notificationsSub
         case ourChannel, ourChannelSub, support, supportSub
         case version, checkUpdates, keysStayHere
-        case modeSystemProxy, modeSystemProxySub, modeTun, modeTunSub
+        case modeSystemProxy, modeSystemProxySub, modeTun, modeTunSub, modeProxyShort
+        case refreshDone, refreshDoneDetail, refreshFailed
         case helperInstall, helperInstallSub, helperRemove, helperInstalled
         case coreVersion, viewLog, viewLogSub, install, remove
         // Logs
@@ -229,6 +230,10 @@ public enum L {
             case .modeSystemProxySub: return "Без пароля. Идут только программы, которые уважают настройки прокси"
             case .modeTun: return "TUN"
             case .modeTunSub: return "Весь трафик и правила по программам. Нужен системный помощник"
+            case .modeProxyShort: return "Прокси"
+            case .refreshDone: return "Подписка обновлена"
+            case .refreshDoneDetail: return "Серверы, дни и трафик — актуальные"
+            case .refreshFailed: return "Подписка не обновлена"
             case .helperInstall: return "Установить помощник"
             case .helperInstallSub: return "Один запрос пароля администратора"
             case .helperRemove: return "Удалить помощник"
@@ -460,6 +465,10 @@ public enum L {
             case .modeSystemProxySub: return "No password. Only apps that honour proxy settings are captured"
             case .modeTun: return "TUN"
             case .modeTunSub: return "All traffic and per-app rules. Needs the system helper"
+            case .modeProxyShort: return "Proxy"
+            case .refreshDone: return "Subscription updated"
+            case .refreshDoneDetail: return "Servers, days and traffic are up to date"
+            case .refreshFailed: return "Subscription not updated"
             case .helperInstall: return "Install the helper"
             case .helperInstallSub: return "One administrator prompt"
             case .helperRemove: return "Remove the helper"

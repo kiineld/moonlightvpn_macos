@@ -138,6 +138,34 @@ struct Panel<Content: View>: View {
     }
 }
 
+/// A page that scrolls, with room for its glass's shadows.
+///
+/// Liquid Glass casts a soft shadow past each card's edge, and a scroll view
+/// clips what it holds to its own bounds. Inset by the page's margins, it cut
+/// those shadows off in straight lines down both sides of the cards and along
+/// the bottom of the window — hard grey edges that on the light theme's white
+/// canvas looked like dirt. This scroll view reaches out to the window's edges
+/// and takes the margins back inside, so the cards sit exactly where they did
+/// and their shadows have faded out before anything clips them.
+struct PageScroll<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        // Up to the header and no further: past it, scrolled cards would draw
+        // over the page's title.
+        ScrollView {
+            content
+                .padding(.horizontal, RootView.pageGutter)
+                .padding(.top, RootView.pageTopInset)
+                .padding(.bottom, RootView.pageBottomInset)
+        }
+        .mlScrollIndicators(hidden: true)
+        .padding(.horizontal, -RootView.pageGutter)
+        .padding(.top, -RootView.pageTopInset)
+        .padding(.bottom, -RootView.pageBottomInset)
+    }
+}
+
 /// A card of rows with no padding of its own — the rows carry it, so the hairline
 /// between them can run to the card's edge or be inset past an icon.
 struct RowGroup<Content: View>: View {

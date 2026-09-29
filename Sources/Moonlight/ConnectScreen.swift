@@ -4,6 +4,7 @@ import MoonlightCore
 
 struct ConnectScreen: View {
     @EnvironmentObject var tunnel: TunnelController
+    @EnvironmentObject var settings: AppSettings
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
@@ -20,6 +21,8 @@ struct ConnectScreen: View {
     /// the page jumped at the end of the spring.
     @State private var aboveButton: CGFloat = 0
     @State private var belowButton: CGFloat = 0
+    /// What the last refresh started here came to, while it is on screen.
+    @State private var toast: RefreshToast?
 
     /// One curve for everything the drawer moves — the button's size, the
     /// page's offset, the list's height and fade, the chevron. A spring
@@ -70,6 +73,34 @@ struct ConnectScreen: View {
         }
         .onPreferenceChange(AboveButtonKey.self) { settle(&aboveButton, $0) }
         .onPreferenceChange(BelowButtonKey.self) { settle(&belowButton, $0) }
+        // Over the page rather than in it, so its arrival moves nothing; at
+        // the foot, where it covers neither the time nor the button. The
+        // curve is scoped to the note: on the page it would also have
+        // animated whatever else changed as the refresh finished.
+        .overlay(alignment: .bottom) {
+            ZStack {
+                if let toast {
+                    ToastView(toast: toast) { self.toast = nil }
+                        .frame(maxWidth: 460)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .id(toast.id)
+                }
+            }
+            .animation(Motion.standard, value: toast?.id)
+        }
+    }
+
+    /// Refreshes the subscription and says how it went. Refreshing used to
+    /// turn the glyph and stop, and whether anything had happened — or why
+    /// not — was left to the timestamp on another page.
+    private func refreshAndReport() async {
+        guard !tunnel.isRefreshing else { return }
+        let updated = await tunnel.refresh()
+        let shown = RefreshToast(updated: updated, issue: updated ? nil : tunnel.issue)
+        toast = shown
+        // Long enough to read; a failure carries a reason, so it stays longer.
+        try? await Task.sleep(nanoseconds: updated ? 3_200_000_000 : 6_000_000_000)
+        if toast?.id == shown.id { toast = nil }
     }
 
     /// Takes a new measurement. The first is applied as is — there is nothing
@@ -102,31 +133,25 @@ struct ConnectScreen: View {
 
     /// How long the tunnel has been up.
     private var timer: some View {
-        VStack(spacing: 0) {
-            Text(L.t(.connectionTime, locale))
-                .font(.ml(12, .medium))
-                .foregroundStyle(palette.textMuted)
-            Text(Format.duration(tunnel.uptime))
-                // A hero number, so the display face — tabular, so the time
-                // ticks without the digits shifting under it.
-                .font(.mlDisplay(24, .semibold).monospacedDigit())
-                .foregroundStyle(tunnel.state.isConnected ? palette.text : palette.textMuted)
-                .padding(.top, 2)
-                .animation(Motion.paint, value: tunnel.state.isConnected)
-        }
+        UptimeLabel(meter: tunnel.meter, connected: tunnel.state.isConnected)
     }
 
     /// The state in words, why it is not connected, the service's message,
     /// and the server picker.
     private var belowButtonContent: some View {
         VStack(spacing: 0) {
-            StatusPill(
-                title: statusLabel,
-                connected: tunnel.state.isConnected
-            ) {
-                page = .connections
+            HStack(spacing: 8) {
+                StatusPill(
+                    title: statusLabel,
+                    connected: tunnel.state.isConnected
+                ) {
+                    page = .connections
+                }
+                .help(L.t(.titleConnections, locale))
+                ModeSwitch(mode: tunnel.tunnelMode, enabled: !tunnel.state.isBusy) { mode in
+                    choose(mode)
+                }
             }
-            .help(L.t(.titleConnections, locale))
             .padding(.top, 18)
             .rise(0, page)
 
@@ -152,6 +177,19 @@ struct ConnectScreen: View {
         }
         .animation(Motion.standard, value: tunnel.issue)
         .animation(Motion.standard, value: tunnel.info.announce)
+    }
+
+    /// Switches the transport. TUN without the helper cannot work, so asking
+    /// for it goes to Settings, where the helper is installed — and TUN is
+    /// switched on once it is.
+    private func choose(_ mode: TunnelMode) {
+        guard mode != tunnel.tunnelMode else { return }
+        if mode == .tun, !tunnel.helperInstalled {
+            settings.tunAwaitingHelper = true
+            page = .settings
+            return
+        }
+        Task { await tunnel.setTunnelMode(mode) }
     }
 
     private var statusLabel: String {
@@ -186,7 +224,7 @@ struct ConnectScreen: View {
                 .opacity(tunnel.hasSubscription ? 1 : 0.45)
 
                 GlassIconButton(icon: .refreshCW, spinning: tunnel.isRefreshing) {
-                    Task { await tunnel.refresh() }
+                    Task { await refreshAndReport() }
                 }
                 .help(L.t(tunnel.isRefreshing ? .refreshing : .refresh, locale))
                 .disabled(!tunnel.hasSubscription)
@@ -404,9 +442,10 @@ struct ConnectScreen: View {
 /// The connect control is the moon from the logo.
 ///
 /// Disconnected it is the logo's crescent, dim, with its two stars; connected
-/// the shadow slides off and it is a full moon, lit, and the stars fade as the
-/// sky brightens. Changing state is the moon changing phase — the one moment in
-/// the interface allowed to be expressive, and the brand doing the explaining.
+/// the shadow slides off and it is a full moon, lit in the logo's own colour in
+/// both themes, and the stars fade as the sky brightens. Changing state is the
+/// moon changing phase — the one moment in the interface allowed to be
+/// expressive, and the brand doing the explaining.
 /// While the tunnel is changing state a thin orbit turns round it.
 private struct PowerButton: View {
     @Environment(\.palette) private var palette
@@ -431,14 +470,14 @@ private struct PowerButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .strokeBorder(palette.text.opacity(full || hovering ? 0.45 : 0), lineWidth: 1)
+                    .strokeBorder(ring, lineWidth: 1)
                 if state.isBusy {
                     Orbit()
                         .padding(side * 0.06)
                 }
-                MoonPhase(full: full, lit: full ? palette.text : palette.text2)
+                MoonPhase(full: full, lit: full ? palette.brand : palette.text2)
                     .frame(width: moon, height: moon)
-                    .shadow(color: palette.text.opacity(full ? 0.35 : 0), radius: moon * 0.35)
+                    .shadow(color: palette.brand.opacity(full ? 0.55 : 0), radius: moon * 0.35)
                 stars
             }
             .frame(width: side, height: side)
@@ -451,6 +490,11 @@ private struct PowerButton: View {
         .onHover { hovering = $0 }
         .animation(Motion.standard, value: full)
         .animation(Motion.paint, value: hovering)
+    }
+
+    /// The rim: the moon's colour while it is lit, a quiet line on hover.
+    private var ring: Color {
+        full ? palette.brand.opacity(0.75) : palette.text.opacity(hovering ? 0.45 : 0)
     }
 
     /// The logo's two stars, up and to the right of the moon. They belong to
@@ -657,5 +701,111 @@ private struct BelowButtonKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+// MARK: - Uptime
+
+/// The connection time — the page's one figure that changes every second, so
+/// the one part of it that observes the meter. The rest of the page, server
+/// list included, no longer re-renders with each tick.
+private struct UptimeLabel: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    @ObservedObject var meter: TrafficMeter
+    let connected: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(L.t(.connectionTime, locale))
+                .font(.ml(12, .medium))
+                .foregroundStyle(palette.textMuted)
+            Text(Format.duration(meter.uptime))
+                // A hero number, so the display face — tabular, so the time
+                // ticks without the digits shifting under it.
+                .font(.mlDisplay(24, .semibold).monospacedDigit())
+                .foregroundStyle(connected ? palette.text : palette.textMuted)
+                .padding(.top, 2)
+                .animation(Motion.paint, value: connected)
+        }
+    }
+}
+
+// MARK: - Mode
+
+/// How traffic reaches the tunnel, beside the state it is in — the system
+/// proxy or TUN — and the way to change it without going to Settings.
+private struct ModeSwitch: View {
+    @Environment(\.appLocale) private var locale
+    let mode: TunnelMode
+    let enabled: Bool
+    let choose: (TunnelMode) -> Void
+
+    var body: some View {
+        // The binding never writes the mode itself: choosing TUN with no
+        // helper leaves it where it is and goes to Settings instead.
+        SegmentedPill(
+            selection: Binding(get: { mode }, set: { choose($0) }),
+            options: [(TunnelMode.systemProxy, L.t(.modeProxyShort, locale)),
+                      (TunnelMode.tun, L.t(.modeTun, locale))],
+            height: 28
+        )
+        .frame(width: 148)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.5)
+        .help(L.t(mode == .tun ? .modeTunSub : .modeSystemProxySub, locale))
+    }
+}
+
+// MARK: - Refresh result
+
+/// How a refresh started from this page went.
+private struct RefreshToast: Equatable {
+    let id = UUID()
+    let updated: Bool
+    /// Why not, when it did not.
+    let issue: TunnelIssue?
+}
+
+/// A short note at the foot of the page: updated, or not and why. Clicking it
+/// puts it away; otherwise it goes on its own.
+private struct ToastView: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let toast: RefreshToast
+    let dismiss: () -> Void
+
+    private var tone: Color { toast.updated ? palette.stUpInk : palette.danger }
+
+    var body: some View {
+        Button(action: dismiss) {
+            HStack(spacing: 12) {
+                IconView(toast.updated ? .check : .circleAlert, size: 15,
+                         strokeWidth: toast.updated ? 2.6 : 2.2)
+                    .foregroundStyle(tone)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(tone.opacity(0.14)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L.t(toast.updated ? .refreshDone : .refreshFailed, locale))
+                        .font(.ml(13.5, .heavy))
+                        .foregroundStyle(palette.text)
+                    Text(detail)
+                        .font(.ml(12))
+                        .foregroundStyle(palette.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.leading, 9)
+            .padding(.trailing, 20)
+            .padding(.vertical, 9)
+            .mlGlass(.rounded(24), fallback: palette.surface)
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .pressCard()
+    }
+
+    private var detail: String {
+        if toast.updated { return L.t(.refreshDoneDetail, locale) }
+        return toast.issue.map { L.issue($0, locale) } ?? L.t(.issueTryLater, locale)
     }
 }

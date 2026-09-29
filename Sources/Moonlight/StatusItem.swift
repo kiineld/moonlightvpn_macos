@@ -26,11 +26,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        let root = TrayView(tray: tray, openWindow: { [weak self] in self?.openWindow() })
-            .environmentObject(tunnel)
-            .environmentObject(settings)
-        popover.contentViewController = NSHostingController(rootView: root)
-        popover.contentSize = NSSize(width: TrayMetrics.width, height: TrayMetrics.height)
 
         settings.$menuBarIcon
             .sink { [weak self] shown in self?.setVisible(shown) }
@@ -81,6 +76,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             popover.performClose(sender)
             return
         }
+        // Built for each opening and dropped at each close. A hosting view kept
+        // alive behind a closed popover went on observing the tunnel, and every
+        // change it published re-rendered a tray nobody could see.
+        if popover.contentViewController == nil {
+            let root = TrayView(tray: tray, openWindow: { [weak self] in self?.openWindow() })
+                .environmentObject(tunnel)
+                .environmentObject(settings)
+            popover.contentViewController = NSHostingController(rootView: root)
+        }
         // As tall as the design wants, but never past the screen it opens on.
         let room = (sender.window?.screen?.visibleFrame.height ?? 900) - 24
         popover.contentSize = NSSize(width: TrayMetrics.width, height: min(TrayMetrics.height, room))
@@ -92,6 +96,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         tray.pinned = false
+        popover.contentViewController = nil
     }
 
     private func openWindow() {

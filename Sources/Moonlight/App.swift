@@ -8,8 +8,10 @@ import MoonlightCore
 struct MoonlightApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var settings = AppSettings()
-    @StateObject private var tunnel = TunnelController()
-    @StateObject private var logs = LogStore.shared
+    /// Owned here but not observed here — see ``Services``.
+    @StateObject private var services = Services()
+
+    private var tunnel: TunnelController { services.tunnel }
 
     init() {
         SingleInstance.enforce()
@@ -21,7 +23,7 @@ struct MoonlightApp: App {
             RootView()
                 .environmentObject(tunnel)
                 .environmentObject(settings)
-                .environmentObject(logs)
+                .environmentObject(LogStore.shared)
                 .onAppear {
                     delegate.tunnel = tunnel
                     delegate.settings = settings
@@ -33,10 +35,7 @@ struct MoonlightApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Moonlight") {
-                Button(tunnel.state.isConnected ? "Disconnect" : "Connect") {
-                    Task { await tunnel.toggle() }
-                }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                ConnectCommand(tunnel: tunnel)
 
                 Button("Refresh subscription") {
                     Task { await tunnel.refresh() }
@@ -51,6 +50,35 @@ struct MoonlightApp: App {
         // the two together spin the scene at 100% CPU — starving the main actor
         // badly enough that awaited work (the launch-time subscription refresh)
         // never resumes.
+    }
+}
+
+/// The controller and the log, created once and handed down — without the
+/// app observing either.
+///
+/// Both used to be `@StateObject`s of the app itself, which subscribes the
+/// whole scene to them: every line the core logged and every tick of the
+/// uptime re-ran the app's body, rebuilt its window group and its menus, while
+/// the connect animation was trying to draw. This object publishes nothing, so
+/// the scene never re-runs on their account; the views that show them observe
+/// them directly. Still a `@StateObject`, because that is what creates it
+/// lazily — after `SingleInstance.enforce()`, which must run before the
+/// controller's initialiser reaps anything.
+@MainActor
+private final class Services: ObservableObject {
+    let tunnel = TunnelController()
+}
+
+/// "Connect" or "Disconnect" in the menu — the one part of the commands that
+/// follows the tunnel, so it observes it on its own.
+private struct ConnectCommand: View {
+    @ObservedObject var tunnel: TunnelController
+
+    var body: some View {
+        Button(tunnel.state.isConnected ? "Disconnect" : "Connect") {
+            Task { await tunnel.toggle() }
+        }
+        .keyboardShortcut("c", modifiers: [.command, .shift])
     }
 }
 

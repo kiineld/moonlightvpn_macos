@@ -100,44 +100,12 @@ private struct TrayContent: View {
                 .animation(Motion.paint, value: tray.pinned)
             }
 
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(tunnel.state.isConnected ? palette.accent : palette.textMuted)
-                    .frame(width: 7, height: 7)
-                Text(statusLine)
-                    .font(.ml(12.5, .semibold))
-                    .foregroundStyle(tunnel.state.isConnected ? palette.accentInk : palette.text2)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                rate(.arrowDown, tunnel.rateDown, tone: palette.accentInk)
-                rate(.arrowUp, tunnel.rateUp, tone: palette.text2)
-            }
+            TrayStatusLine(state: tunnel.state, meter: tunnel.meter)
 
             if let issue = tunnel.issue {
                 IssueLine(issue: issue)
             }
         }
-    }
-
-    private var statusLine: String {
-        switch tunnel.state {
-        case .connected:
-            return "\(L.t(.bigConnected, locale)) · \(Format.duration(tunnel.uptime))"
-        case .connecting: return L.t(.connecting, locale)
-        case .disconnecting: return L.t(.disconnecting, locale)
-        case .disconnected, .failed: return L.t(.disconnected, locale)
-        }
-    }
-
-    private func rate(_ icon: Icon, _ value: Int64, tone: Color) -> some View {
-        HStack(spacing: 3) {
-            IconView(icon, size: 12, strokeWidth: 2.4)
-            Text(Format.rate(tunnel.state.isConnected ? value : 0, locale: locale))
-                .font(.mlMono(12))
-                .lineLimit(1)
-                .fixedSize()
-        }
-        .foregroundStyle(tunnel.state.isConnected ? tone : palette.textMuted)
     }
 
     // MARK: - Search
@@ -539,5 +507,50 @@ private struct TrayChip: View {
             .frame(height: 19)
             .mlGlass(.capsule, fallback: palette.text.opacity(quiet ? 0.06 : 0.1))
             .layoutPriority(quiet ? 1 : 0)
+    }
+}
+
+/// The state, the uptime and the speeds — the tray's one line that changes
+/// every second, so the one part that observes the meter.
+private struct TrayStatusLine: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.appLocale) private var locale
+    let state: ConnectionState
+    @ObservedObject var meter: TrafficMeter
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(state.isConnected ? palette.accent : palette.textMuted)
+                .frame(width: 7, height: 7)
+            Text(statusLine)
+                .font(.ml(12.5, .semibold))
+                .foregroundStyle(state.isConnected ? palette.accentInk : palette.text2)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            rate(.arrowDown, meter.rateDown, tone: palette.accentInk)
+            rate(.arrowUp, meter.rateUp, tone: palette.text2)
+        }
+    }
+
+    private var statusLine: String {
+        switch state {
+        case .connected:
+            return "\(L.t(.bigConnected, locale)) · \(Format.duration(meter.uptime))"
+        case .connecting: return L.t(.connecting, locale)
+        case .disconnecting: return L.t(.disconnecting, locale)
+        case .disconnected, .failed: return L.t(.disconnected, locale)
+        }
+    }
+
+    private func rate(_ icon: Icon, _ value: Int64, tone: Color) -> some View {
+        HStack(spacing: 3) {
+            IconView(icon, size: 12, strokeWidth: 2.4)
+            Text(Format.rate(state.isConnected ? value : 0, locale: locale))
+                .font(.mlMono(12))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .foregroundStyle(state.isConnected ? tone : palette.textMuted)
     }
 }

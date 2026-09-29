@@ -10,16 +10,14 @@ struct SubscriptionScreen: View {
     @Binding var page: Page
 
     var body: some View {
-        ScrollView {
+        PageScroll {
             VStack(spacing: 14) {
                 if let announce = tunnel.info.announce {
                     AnnounceBanner(text: announce).rise(0, page)
                 }
                 columns
             }
-            .padding(.bottom, 8)
         }
-        .mlScrollIndicators(hidden: true)
     }
 
     private var columns: some View {
