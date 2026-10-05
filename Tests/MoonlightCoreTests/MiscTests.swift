@@ -99,7 +99,8 @@ func updaterTests() {
     Check.suite("HelperInstaller · scripts") {
         let install = HelperInstaller.installScript(
             helper: URL(fileURLWithPath: "/tmp/moonlight-helper"),
-            core: URL(fileURLWithPath: "/tmp/mihomo")
+            core: URL(fileURLWithPath: "/tmp/mihomo"),
+            geodata: Geodata.fileNames.map { URL(fileURLWithPath: "/tmp/geodata/\($0)") }
         )
         // They run as root through osascript and cannot run here — but they can
         // at least be proved to parse.
@@ -127,6 +128,62 @@ func updaterTests() {
                      "the core is replaced by rename, never written into in place")
         Check.isTrue(position("launchctl bootstrap") > position("mv -f"),
                      "and loaded only once its files are in place")
+        Check.isTrue(position("\(HelperInstaller.coreHome)/GeoSite.dat") > 0
+                     && position("\(HelperInstaller.coreHome)/GeoSite.dat") < position("launchctl bootstrap"),
+                     "the helper's core has its geodata before it can be started")
+        Check.isTrue(position("chown -R root:wheel") > position("\(HelperInstaller.coreHome)/geoip.metadb"),
+                     "and root owns it like everything else there")
+    }
+
+    // The one part of the install that can run here: it only copies, and the
+    // home it copies into is a parameter. As root it is what stands between a
+    // first TUN connect and the download the core would otherwise attempt.
+    Check.suite("HelperInstaller · geodata for the helper's core") {
+        let manager = FileManager.default
+        let workspace = manager.temporaryDirectory
+            .appendingPathComponent("moonlight-seed-\(UUID().uuidString)")
+        let bundled = workspace.appendingPathComponent("bundled")
+        let home = workspace.appendingPathComponent("run")
+        try manager.createDirectory(at: bundled, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: workspace) }
+        for name in Geodata.fileNames {
+            try "bundled \(name)".write(to: bundled.appendingPathComponent(name),
+                                        atomically: true, encoding: .utf8)
+        }
+
+        func seed() throws -> Int32 {
+            let script = "set -e\n" + HelperInstaller.seedScript(
+                geodata: Geodata.files(in: bundled), home: home.path)
+            let shell = Process()
+            shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+            shell.arguments = ["-c", script]
+            try shell.run()
+            shell.waitUntilExit()
+            return shell.terminationStatus
+        }
+        func read(_ name: String) -> String? {
+            try? String(contentsOf: home.appendingPathComponent(name), encoding: .utf8)
+        }
+
+        Check.equal(try seed(), 0, "the copy runs before the helper has made its core a home")
+        Check.equal(Geodata.fileNames.map(read), Geodata.fileNames.map { "bundled \($0)" },
+                    "and puts every bundled file in it")
+        Check.equal(try manager.attributesOfItem(atPath: home.path)[.posixPermissions] as? Int, 0o700,
+                    "in a directory as closed as the helper would have made it")
+
+        // The helper's core fetched its own since, and a later install —
+        // every helper update is one — must not put the old data back.
+        try "the core's own".write(to: home.appendingPathComponent("GeoSite.dat"),
+                                   atomically: true, encoding: .utf8)
+        try manager.removeItem(at: home.appendingPathComponent("geoip.metadb"))
+        Check.equal(try seed(), 0, "a second install runs over the first")
+        Check.equal(read("GeoSite.dat"), "the core's own", "a file the core downloaded is never replaced")
+        Check.equal(read("geoip.metadb"), "bundled geoip.metadb", "a missing one is put back")
+        Check.equal(try manager.contentsOfDirectory(atPath: home.path).sorted(),
+                    Geodata.fileNames.sorted(), "nothing is left behind beside them")
+
+        Check.equal(HelperInstaller.seedScript(geodata: [], home: home.path), "",
+                    "a build without the files adds nothing to the install")
     }
 
     Check.suite("MihomoProcess · core version") {

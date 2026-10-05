@@ -25,9 +25,20 @@ jobs:
           path: Resources/mihomo
           key: mihomo-${{ hashFiles('scripts/fetch-mihomo.sh') }}
 
+      - name: Cache the geodata
+        uses: actions/cache@v4
+        with:
+          path: Resources/geodata
+          key: geodata-${{ hashFiles('scripts/fetch-geodata.sh') }}
+
       - name: Fetch the core
         # The suite starts it for real, so this is not optional here.
         run: scripts/fetch-mihomo.sh
+
+      - name: Fetch the geodata
+        # The suite has the core load GEOSITE and GEOIP rules from these with
+        # the download unreachable, which without them it would only skip.
+        run: scripts/fetch-geodata.sh
 
       - name: Test
         run: swift run moonlight-tests

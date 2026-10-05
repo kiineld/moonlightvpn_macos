@@ -6,6 +6,7 @@ build/
 
 # Fetched by scripts/, not committed — the core alone is 90 MB.
 Resources/mihomo/
+Resources/geodata/
 Resources/fonts/
 vendor/lucide/
 

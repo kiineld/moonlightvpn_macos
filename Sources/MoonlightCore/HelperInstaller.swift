@@ -34,6 +34,9 @@ public enum HelperInstaller {
     public static var installedCore: URL { URL(fileURLWithPath: "\(installRoot)/mihomo") }
     /// The installed helper program itself.
     public static var installedHelper: URL { URL(fileURLWithPath: "\(installRoot)/moonlight-helper") }
+    /// The home of the core the helper runs — the helper's own compiled-in
+    /// `coreDataDirectory`, which this has to match.
+    public static let coreHome = "\(installRoot)/run"
 
     public static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlist)
@@ -45,7 +48,10 @@ public enum HelperInstaller {
     /// The core is copied rather than referenced in place: the helper must exec a
     /// binary no unprivileged account can rewrite, and `/Applications` is
     /// writable by admin users.
-    public static func install(helper: URL, core: URL) throws {
+    ///
+    /// `geodata` is the bundled geo databases, which go into the helper core's
+    /// home where it has none — see ``seedScript(geodata:home:)``.
+    public static func install(helper: URL, core: URL, geodata: [URL] = []) throws {
         guard FileManager.default.isExecutableFile(atPath: helper.path) else {
             throw Failure.missingResource("moonlight-helper")
         }
@@ -53,7 +59,7 @@ public enum HelperInstaller {
             throw Failure.missingResource("mihomo")
         }
 
-        try runAsAdministrator(installScript(helper: helper, core: core))
+        try runAsAdministrator(installScript(helper: helper, core: core, geodata: geodata))
     }
 
     /// The install as a script — the old helper unloaded and gone first, then
@@ -66,7 +72,7 @@ public enum HelperInstaller {
     /// are replaced by rename, never by writing into them: copying over the
     /// binary of a helper or core that is still running rewrites pages it is
     /// executing.
-    public static func installScript(helper: URL, core: URL) -> String {
+    public static func installScript(helper: URL, core: URL, geodata: [URL] = []) -> String {
         """
         set -e
         \(unloadAndWait)
@@ -75,6 +81,7 @@ public enum HelperInstaller {
         cp -f '\(core.path)' '\(installRoot)/mihomo.new'
         mv -f '\(installRoot)/moonlight-helper.new' '\(installRoot)/moonlight-helper'
         mv -f '\(installRoot)/mihomo.new' '\(installRoot)/mihomo'
+        \(seedScript(geodata: geodata, home: coreHome))
         chown -R root:wheel '\(installRoot)'
         chmod 755 '\(installRoot)' '\(installRoot)/moonlight-helper' '\(installRoot)/mihomo'
         cat > '\(daemonPlist)' <<'PLIST'
@@ -88,6 +95,32 @@ public enum HelperInstaller {
           sleep 1
         done
         """
+    }
+
+    /// The part of the install that gives the helper's core its geo databases
+    /// (see ``Geodata``): each copied into `home` unless one is already there.
+    ///
+    /// The app cannot do this the way it does for its own core — that home is
+    /// root's alone, and the app cannot so much as list it. It is done by the
+    /// install rather than by the helper so that the helper's program stays
+    /// byte for byte what it was: a changed helper is one admin prompt for
+    /// everyone who has it installed. A file already there is the one the core
+    /// downloaded for itself, and stays.
+    public static func seedScript(geodata: [URL], home: String) -> String {
+        guard !geodata.isEmpty else { return "" }
+        // 0700 is what the helper gives this directory when it makes it, and
+        // here it may be made first.
+        var lines = ["mkdir -p '\(home)'", "chmod 700 '\(home)'"]
+        for file in geodata {
+            let target = "\(home)/\(file.lastPathComponent)"
+            lines += [
+                "if [ ! -e '\(target)' ]; then",
+                "  cp -f '\(file.path)' '\(target).new'",
+                "  mv -f '\(target).new' '\(target)'",
+                "fi",
+            ]
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Unloads the helper and waits — up to fifteen seconds — until launchd no

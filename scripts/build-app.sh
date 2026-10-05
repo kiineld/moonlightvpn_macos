@@ -27,6 +27,7 @@ CABINET_URL="${CABINET_URL:-https://cabinetofficial.rustafield.site}"
 RELEASES_URL="${RELEASES_URL:-https://github.com/kiineld/moonlightvpn_macos/releases/latest}"
 
 scripts/fetch-mihomo.sh
+scripts/fetch-geodata.sh
 scripts/fetch-fonts.sh
 
 # A *multi*-arch build shells out to xcbuild, which lives inside Xcode.app —
@@ -54,11 +55,14 @@ BIN_DIR="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin
 
 echo "▸ assembling $APP"
 rm -rf "$APP"
-mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources/fonts"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources/fonts" "$CONTENTS/Resources/geodata"
 
 cp "$BIN_DIR/Moonlight" "$CONTENTS/MacOS/Moonlight"
 cp "$BIN_DIR/moonlight-helper" "$CONTENTS/Resources/moonlight-helper"
 cp Resources/mihomo/mihomo "$CONTENTS/Resources/mihomo"
+# What the core would otherwise have to download before it can start — see
+# scripts/fetch-geodata.sh. -p, so the files keep the date of the data.
+cp -p Resources/geodata/GeoSite.dat Resources/geodata/geoip.metadb "$CONTENTS/Resources/geodata/"
 cp Resources/fonts/*.ttf "$CONTENTS/Resources/fonts/"
 chmod +x "$CONTENTS/MacOS/Moonlight" "$CONTENTS/Resources/moonlight-helper" "$CONTENTS/Resources/mihomo"
 

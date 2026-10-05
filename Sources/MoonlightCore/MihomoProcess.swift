@@ -27,6 +27,8 @@ public final class MihomoProcess: @unchecked Sendable {
 
     private let binary: URL
     private let dataDirectory: URL
+    /// Where this build's geo databases are, if it has them — see ``Geodata``.
+    private let geodata: URL?
     private var process: Process?
     private let lock = NSLock()
 
@@ -42,9 +44,10 @@ public final class MihomoProcess: @unchecked Sendable {
 
     private var stopping = false
 
-    public init(binary: URL, dataDirectory: URL) {
+    public init(binary: URL, dataDirectory: URL, geodata: URL? = nil) {
         self.binary = binary
         self.dataDirectory = dataDirectory
+        self.geodata = geodata
     }
 
     /// The release number in `mihomo -v`'s first line — "1.19.31" — or nil for
@@ -187,6 +190,10 @@ public final class MihomoProcess: @unchecked Sendable {
         guard FileManager.default.isExecutableFile(atPath: binary.path) else {
             throw Failure.binaryMissing
         }
+        // Before the core looks: it opens these to parse GEOSITE and GEOIP
+        // rules, and a `-t` that finds none downloads them like a start does.
+        Geodata.seed(home: dataDirectory, from: geodata)
+
         let process = Process()
         process.executableURL = binary
         process.arguments = ["-d", dataDirectory.path, "-t", "-f", configPath.path]
@@ -214,6 +221,7 @@ public final class MihomoProcess: @unchecked Sendable {
             throw Failure.binaryMissing
         }
         try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        Geodata.seed(home: dataDirectory, from: geodata)
 
         let process = Process()
         process.executableURL = binary

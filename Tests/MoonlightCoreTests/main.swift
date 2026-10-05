@@ -14,6 +14,7 @@ tunFailureTests()
 nodePresentationTests()
 autoPickerTests()
 updaterTests()
+geodataTests()
 coreIntegrationTests()
 
 Check.report()

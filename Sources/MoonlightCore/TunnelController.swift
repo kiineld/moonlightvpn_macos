@@ -60,6 +60,7 @@ public final class TunnelController: ObservableObject {
     private let support: URL
     private let coreBinary: URL
     private let helperBinary: URL
+    private let geodata: URL
     /// The helper core's version as last read, so the check costs a process
     /// launch once rather than on every connect.
     private var configURL: URL { core.configURL }
@@ -104,7 +105,9 @@ public final class TunnelController: ObservableObject {
 
         coreBinary = bundle.coreBinaryURL
         helperBinary = bundle.helperBinaryURL
-        core = MihomoProcess(binary: bundle.coreBinaryURL, dataDirectory: coreHome)
+        geodata = bundle.geodataURL
+        core = MihomoProcess(binary: bundle.coreBinaryURL, dataDirectory: coreHome,
+                             geodata: bundle.geodataURL)
         api = MihomoAPI(port: preferences.controllerPort, secret: preferences.coreSecret)
 
         selectedNode = preferences.selectedNode
@@ -223,9 +226,10 @@ public final class TunnelController: ObservableObject {
     /// prompt the install itself asks for.
     public func updateHelper() async throws {
         LogStore.shared.client("Updating the system helper to this build's core")
-        let helperBinary = helperBinary, coreBinary = coreBinary
+        let helperBinary = helperBinary, coreBinary = coreBinary, geodata = geodata
         try await Task.detached(priority: .userInitiated) {
-            try HelperInstaller.install(helper: helperBinary, core: coreBinary)
+            try HelperInstaller.install(helper: helperBinary, core: coreBinary,
+                                        geodata: Geodata.files(in: geodata))
         }.value
         // launchd takes a moment to bring the daemon back and open its socket.
         for _ in 0..<30 {
@@ -1237,6 +1241,16 @@ public extension Bundle {
         }
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Resources/mihomo/mihomo")
+    }
+
+    /// The folder of bundled geo databases — see ``Geodata``. Falls back to
+    /// the repository layout, like the core.
+    var geodataURL: URL {
+        if let resource = url(forResource: "geodata", withExtension: nil) {
+            return resource
+        }
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/geodata")
     }
 
     var helperBinaryURL: URL {

@@ -75,8 +75,11 @@ jobs:
       - name: Test
         # The suite runs the real core, so it only has to pass once — but it is
         # cheap and catches a bad core download per architecture.
+        # The geodata is fetched fresh rather than cached: upstream rebuilds it
+        # daily, and what a release ships stays in the user's core home.
         run: |
           scripts/fetch-mihomo.sh
+          scripts/fetch-geodata.sh
           swift run moonlight-tests
 
       - name: Build

@@ -150,4 +150,61 @@ func coreIntegrationTests() {
         _ = semaphore.wait(timeout: .now() + 90)
         Check.isTrue(process.isRunning, "the core stayed up through the whole exchange")
     }
+
+    // The first launch, where the download is blocked: the core needs its geo
+    // databases to parse the rules every subscription has, and gets them from
+    // the bundle or not at all. `geox-url` is where it would download them
+    // from; pointed at a closed port, any attempt fails at once.
+    let bundledGeodata = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent("Resources/geodata")
+    guard Geodata.files(in: bundledGeodata).count == Geodata.fileNames.count else {
+        print("· geodata check skipped — run scripts/fetch-geodata.sh first")
+        return
+    }
+
+    Check.suite("Core · geodata without the network") {
+        let geoPanel = """
+        geox-url:
+          geosite: "http://127.0.0.1:9/geosite.dat"
+          mmdb: "http://127.0.0.1:9/geoip.metadb"
+          geoip: "http://127.0.0.1:9/geoip.dat"
+        proxies:
+          - {name: "🇳🇱 Amsterdam", type: ss, server: 127.0.0.1, port: 18081, cipher: aes-256-gcm, password: pw}
+        proxy-groups:
+          - {name: "Панель", type: select, proxies: ["🇳🇱 Amsterdam"]}
+        rules:
+          - GEOSITE,category-ru,DIRECT
+          - GEOIP,RU,DIRECT
+          - MATCH,Панель
+        """
+        let config = workspace.appendingPathComponent("geodata.yaml")
+        try MihomoConfig.build(panelYAML: geoPanel, overrides: overrides(.systemProxy))
+            .write(to: config, atomically: true, encoding: .utf8)
+
+        // The control. Without it the check below would pass just as well if
+        // the core had stopped needing these files, or had reached the network.
+        let emptyHome = workspace.appendingPathComponent("geodata-empty", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyHome, withIntermediateDirectories: true)
+        do {
+            try MihomoProcess(binary: core, dataDirectory: emptyHome).validate(configPath: config)
+            Check.isTrue(false, "an empty home with no network cannot load a GEOSITE rule")
+        } catch {
+            Check.isTrue(error.localizedDescription.contains("can't download GeoSite.dat"),
+                         "an empty home with no network fails on the download — \(error.localizedDescription)")
+        }
+
+        // And the app's own way in: a home that has never seen a core, given
+        // to a process that knows where the bundled files are.
+        let freshHome = workspace.appendingPathComponent("geodata-fresh", isDirectory: true)
+        let seeded = MihomoProcess(binary: core, dataDirectory: freshHome, geodata: bundledGeodata)
+        do {
+            try seeded.validate(configPath: config)
+            Check.isTrue(true, "a freshly seeded home loads GEOSITE and GEOIP rules with no network")
+        } catch {
+            Check.isTrue(false, "a freshly seeded home loads GEOSITE and GEOIP rules with no network — \(error)")
+        }
+        Check.equal(try FileManager.default.contentsOfDirectory(atPath: freshHome.path).sorted(),
+                    Geodata.fileNames.sorted(),
+                    "validating is what put the files there, and the core added none")
+    }
 }

@@ -135,7 +135,7 @@ probe): after the core moved to 1.19.31 they worked everywhere but in TUN. The
 app now compares the installed helper — its program and its core's version —
 with its own and, when they differ, replaces it on the next TUN connect (the
 same one admin prompt the install asks for); Settings says so with an update
-button.
+button. The install also gives that core its geo databases — see *Geodata*.
 
 The helper stops its core and exits on SIGTERM, which is how `launchctl bootout`
 and a shutdown ask it to go. Until 1.6.4 its signal handlers sat on the main
@@ -464,10 +464,41 @@ thing worth telling apart from it.
 
 ## Geodata
 
-Not shipped. mihomo downloads `GeoSite.dat`/`GeoIP.dat` on demand into
-`~/Library/Application Support/Moonlight/core/` the first time a config
-references a `geosite:`/`geoip:` rule, which every panel config does. That costs
-one download on first connect and saves ~24 MB in the bundle.
+Shipped. Every subscription's config has `GEOSITE` and `GEOIP` rules, and mihomo
+needs its geo databases to *parse* them — so the first time, it downloads them
+into its home before it does anything else. Where that download is blocked,
+which is where someone needs the tunnel, `mihomo -t` and the core itself wait
+about 75 seconds and exit with `can't download GeoSite.dat`. The app reported
+that the VPN could not be started, and it never could be: the tunnel that would
+have made the download possible needs the files. They used to be left out, to
+save the space.
+
+The bundle now carries the two files this core opens with the default
+`geodata-mode` — `GeoSite.dat` for GEOSITE and `geoip.metadb` for GEOIP, found
+by running it on an empty home; each is needed on its own. They come from
+`scripts/fetch-geodata.sh`, out of the same release the core would download
+them from. `MihomoProcess` copies them into the core's home,
+`~/Library/Application Support/Moonlight/core/`, before every validate and every
+start, each only where the home has none. A file already there is one the core
+downloaded itself, or keeps fresh under the config's `geo-auto-update`, and is
+never replaced.
+
+The helper's core has a home of its own, root's alone, which the app cannot so
+much as list. Its files are copied by the helper's install script, under the
+same rule — not by the helper, whose program therefore stays what it was: a
+changed helper is one admin prompt for everyone who has it. A helper installed
+by an earlier version gets them the next time it is updated or reinstalled;
+until then its core downloads them as before.
+
+Upstream has no versions to pin — one release, rebuilt daily — so the script
+takes the day's build, checks each file against the checksum published beside
+it, and records the date. `GEODATA_URL` points it at a mirror, or at one exact
+build. A release fetches fresh; CI caches.
+
+It costs 12.6 MB in the bundle (4.3 + 8.4) and about 5.5 MB in each DMG. Still
+not shipped: `GeoIP.dat`, read only under `geodata-mode: true`, and `ASN.mmdb`,
+read only for `IP-ASN` rules. A config that needs either downloads it on first
+use, as before.
 
 ## Design system
 
@@ -599,6 +630,7 @@ glass.
 
 ```bash
 scripts/fetch-mihomo.sh   # ~90 MB, lipo'd from the two darwin releases
+scripts/fetch-geodata.sh  # 12.6 MB, what the core would otherwise download
 scripts/fetch-fonts.sh
 scripts/build-app.sh      # build/moonlight.app
 ```
@@ -645,7 +677,7 @@ without the main window coming up behind it.
 swift run moonlight-tests
 ```
 
-227 checks. A plain executable rather than XCTest, because XCTest ships with
+347 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`
@@ -661,7 +693,9 @@ The last suite runs the **real mihomo binary**: every config shape the app can
 produce goes through `mihomo -t`, and one is started for real so the RESTful API
 — the app's entire control channel — is exercised rather than assumed. TUN
 configs are validated but never started, because a test suite must not ask for
-root.
+root. It also has the core load a `GEOSITE`/`GEOIP` config from a home it has
+never seen, with `geox-url` pointed at a closed port — and, as the control,
+fail to from an empty one — so a first launch is shown to need no network.
 
 ## Configuration
 
