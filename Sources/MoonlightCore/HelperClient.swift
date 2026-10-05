@@ -32,10 +32,17 @@ public struct HelperClient: Sendable {
         }
     }
 
-    public init() {}
+    /// Where this client looks for the helper. The app's is ``socketPath``;
+    /// the test suite points it at nothing, so it can never reach — and stop —
+    /// the tunnel of the person running it.
+    private let path: String
+
+    public init(socketPath: String = HelperClient.socketPath) {
+        path = socketPath
+    }
 
     public var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: Self.socketPath)
+        FileManager.default.fileExists(atPath: path)
     }
 
     @discardableResult
@@ -75,7 +82,7 @@ public struct HelperClient: Sendable {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
-        let pathBytes = Array(Self.socketPath.utf8)
+        let pathBytes = Array(path.utf8)
         withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: pathBytes) }
 
         let connected = withUnsafePointer(to: &address) { pointer in

@@ -19,6 +19,8 @@ struct RootView: View {
     let tunnel: TunnelController
     /// Where AppKit put the traffic lights, measured rather than assumed.
     @State private var titleBarCentre: CGFloat = 14
+    /// Set for the moment Liquid Glass is switching off — see ``seeThrough``.
+    @State private var canvasSettling: UUID?
     /// `ML_PAGE` opens the app straight onto a screen. It exists for
     /// `scripts/screenshots.sh`, which cannot click without accessibility
     /// permission, and is inert when unset.
@@ -38,6 +40,13 @@ struct RootView: View {
     /// drew them — their inset is not a documented constant.
     private var topInset: CGFloat { max(30, titleBarCentre * 2 + 4) }
 
+    /// Whether the window lets the desktop through, blurred, for the glass to
+    /// bend. It does while Liquid Glass is on — and for a moment after it is
+    /// switched off, until the canvas has finished turning solid over it:
+    /// taken away at once, the blur would vanish from under a canvas still a
+    /// quarter transparent, and the fade would end in a jump.
+    private var seeThrough: Bool { settings.liquidGlass || canvasSettling != nil }
+
     var body: some View {
         HStack(spacing: 0) {
             Sidebar(page: $page)
@@ -55,13 +64,27 @@ struct RootView: View {
         }
         .padding(.top, topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Ambient(palette: settings.palette, dark: settings.theme == .dark))
+        .background(Ambient(palette: settings.palette, dark: settings.theme == .dark,
+                            glass: settings.liquidGlass, seeThrough: seeThrough))
         // macOS reports the title bar as a top safe-area inset. Ignoring it puts
         // the content origin at the top of the window, so the sidebar can sit
         // directly under the traffic lights rather than a title bar's height
         // further down.
         .ignoresSafeArea(.container, edges: .top)
-        .background(WindowConfigurator(buttonCentre: $titleBarCentre))
+        .background(WindowConfigurator(buttonCentre: $titleBarCentre,
+                                       canvas: seeThrough ? nil : NSColor(settings.palette.bgDeep)))
+        .onChange(of: settings.liquidGlass) { glass in
+            guard !glass else {
+                canvasSettling = nil
+                return
+            }
+            // As long as the switch's own curve takes to settle.
+            let settling = UUID()
+            canvasSettling = settling
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                if canvasSettling == settling { canvasSettling = nil }
+            }
+        }
         .environmentObject(updater)
         .sheet(item: $links.pending) { request in
             LinkImportSheet(
@@ -77,10 +100,12 @@ struct RootView: View {
             // A sheet is a window of its own, and takes none of this one's
             // theme or language with it unless handed them.
             .environment(\.palette, settings.palette)
+            .environment(\.liquidGlass, settings.liquidGlass)
             .mlLocale(settings.locale)
             .preferredColorScheme(settings.theme == .dark ? .dark : .light)
         }
         .environment(\.palette, settings.palette)
+        .environment(\.liquidGlass, settings.liquidGlass)
         .mlLocale(settings.locale)
         .preferredColorScheme(settings.theme == .dark ? .dark : .light)
         .frame(minWidth: 1_000, minHeight: 680)
@@ -542,15 +567,25 @@ struct SidebarShape: Shape {
 /// slab with no edge, which is how the whole interface looked on a solid black
 /// canvas. Over the blurred desktop it has real light and colour to bend, as
 /// it does in the system's own windows, while the window still reads as black.
+///
+/// With Liquid Glass off there is nothing to bend it for: the canvas is
+/// `bgDeep` at full strength, and the blur — which the system redoes whenever
+/// anything behind the window moves — is not there at all.
 private struct Ambient: View {
     let palette: Palette
     let dark: Bool
+    let glass: Bool
+    /// Whether the blur is under the canvas; see `RootView.seeThrough`.
+    let seeThrough: Bool
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                BehindWindowBlur()
-                palette.bgDeep.opacity(0.76)
+                // In and out at once, never faded: it is under a canvas that
+                // is solid at both moments, and a blur at half strength shows
+                // the desktop sharp.
+                if seeThrough { BehindWindowBlur().transition(.identity) }
+                palette.bgDeep.opacity(glass ? 0.76 : 1)
                 glow(dark ? 0.10 : 0.06, diameter: 900)
                     .position(x: geometry.size.width - 60, y: 0)
                 glow(dark ? 0.06 : 0.04, diameter: 760)

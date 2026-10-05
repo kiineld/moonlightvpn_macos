@@ -36,6 +36,7 @@ public final class Preferences: @unchecked Sendable {
         static let launchAtLogin = "launchAtLogin"
         static let menuBarIcon = "menuBarIcon"
         static let sidebarCollapsed = "sidebarCollapsed"
+        static let liquidGlass = "liquidGlass"
         static let autoConnect = "autoConnect"
         static let notifications = "notifications"
         static let controllerPort = "controllerPort"
@@ -165,6 +166,13 @@ public final class Preferences: @unchecked Sendable {
     public var sidebarCollapsed: Bool {
         get { defaults.bool(forKey: Key.sidebarCollapsed) }
         set { defaults.set(newValue, forKey: Key.sidebarCollapsed) }
+    }
+
+    /// Whether surfaces are drawn as Liquid Glass over the blurred desktop, or
+    /// flat on a solid canvas. On unless switched off.
+    public var liquidGlass: Bool {
+        get { defaults.object(forKey: Key.liquidGlass) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.liquidGlass) }
     }
 
     public var autoConnect: Bool {

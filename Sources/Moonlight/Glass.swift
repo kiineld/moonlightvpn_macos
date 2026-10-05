@@ -16,10 +16,26 @@ import MoonlightDesign
 /// The interface is monochrome, so the glass is neutral. A state — the white
 /// primary button, a selection, the red of "close all" — is a tint on the
 /// glass, never a colour painted over it.
+///
+/// Glass can be switched off in Settings (`\.liquidGlass`). Every surface then
+/// draws the flat one a system without glass gets, and the window stops being
+/// see-through: lensing the desktop behind several dozen shapes, and blurring
+/// it under the whole window, is work the graphics processor does again every
+/// time anything behind the window changes, and a Mac on battery may prefer it
+/// did not.
 enum GlassShape {
     case rounded(CGFloat)
     case capsule
     case circle
+
+    /// Whether this system draws glass at all — and so whether there is
+    /// anything for the switch in Settings to switch.
+    static var systemHasGlass: Bool {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) { return true }
+        #endif
+        return false
+    }
 }
 
 extension View {
@@ -38,8 +54,23 @@ extension View {
     }
 }
 
+private struct LiquidGlassKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether surfaces are Liquid Glass. Handed down from the settings, like
+    /// the palette, and handed on to every sheet and popover — each is a
+    /// window of its own and would otherwise go back to the default.
+    var liquidGlass: Bool {
+        get { self[LiquidGlassKey.self] }
+        set { self[LiquidGlassKey.self] = newValue }
+    }
+}
+
 private struct GlassSurface<S: Shape>: View {
     @Environment(\.palette) private var palette
+    @Environment(\.liquidGlass) private var liquid
     let shape: S
     let tint: Color?
     let fallback: Color
@@ -50,7 +81,16 @@ private struct GlassSurface<S: Shape>: View {
     var body: some View {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
-            Color.clear.glassEffect(Glass.regular.tint(tint), in: shape)
+            // One surface or the other, crossfading when the switch is
+            // flipped: each fades on the curve of whoever flipped it.
+            ZStack {
+                if liquid {
+                    Color.clear.glassEffect(Glass.regular.tint(tint), in: shape)
+                        .transition(.opacity)
+                } else {
+                    flat.transition(.opacity)
+                }
+            }
         } else {
             flat
         }

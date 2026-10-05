@@ -18,6 +18,9 @@ import MoonlightCore
 struct WindowConfigurator: NSViewRepresentable {
     /// Distance from the top of the window to the centre of the close button.
     @Binding var buttonCentre: CGFloat
+    /// The colour of a solid window, or nil for a see-through one — which it
+    /// is while the canvas is the desktop blurred behind it (see `Ambient`).
+    var canvas: NSColor?
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
@@ -36,9 +39,11 @@ struct WindowConfigurator: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         // See-through, so the canvas can be the desktop blurred behind it —
-        // what the glass on top refracts. See `Ambient`.
-        window.isOpaque = false
-        window.backgroundColor = .clear
+        // what the glass on top refracts. Without glass the window is an
+        // ordinary opaque one again, and the system no longer has to draw
+        // what is behind it.
+        window.isOpaque = canvas != nil
+        window.backgroundColor = canvas ?? .clear
         // With no title bar to grab, the strip itself has to be the drag handle.
         window.isMovableByWindowBackground = true
 

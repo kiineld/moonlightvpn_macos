@@ -301,6 +301,19 @@ struct SettingsScreen: View {
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 15)
+            if GlassShape.systemHasGlass {
+                RowDivider()
+                ToggleRow(
+                    title: L.t(.liquidGlass, locale),
+                    subtitle: L.t(.liquidGlassSub, locale),
+                    // Animated at the source, like the theme: every surface in
+                    // the window changes with it, and they change together.
+                    isOn: Binding(
+                        get: { settings.liquidGlass },
+                        set: { on in withAnimation(Motion.standard) { settings.liquidGlass = on } }
+                    )
+                )
+            }
             RowDivider()
             ToggleRow(
                 title: L.t(.notifications, locale),

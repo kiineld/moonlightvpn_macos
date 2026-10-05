@@ -9,6 +9,7 @@ import MoonlightCore
 /// would take the whole config down, not just the rule.
 struct RuleEditor: View {
     @Environment(\.palette) private var palette
+    @Environment(\.liquidGlass) private var liquidGlass
     @Environment(\.appLocale) private var locale
     let original: RoutingRule?
     /// The subscription's groups, in its order.
@@ -133,6 +134,7 @@ struct RuleEditor: View {
             }
             .frame(width: 340, height: 360)
             .environment(\.palette, palette)
+            .environment(\.liquidGlass, liquidGlass)
             .mlLocale(locale)
         }
     }
@@ -206,6 +208,7 @@ struct RuleEditor: View {
                 choosingApp = false
             }
             .environment(\.palette, palette)
+            .environment(\.liquidGlass, liquidGlass)
             .mlLocale(locale)
         }
     }

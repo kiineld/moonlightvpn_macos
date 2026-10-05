@@ -42,8 +42,6 @@ public final class MihomoProcess: @unchecked Sendable {
     /// Fired when the core exits without being asked to.
     public var onUnexpectedExit: (@Sendable (Int32) -> Void)?
 
-    private var stopping = false
-
     public init(binary: URL, dataDirectory: URL, geodata: URL? = nil) {
         self.binary = binary
         self.dataDirectory = dataDirectory
@@ -237,26 +235,34 @@ public final class MihomoProcess: @unchecked Sendable {
         }
 
         process.terminationHandler = { [weak self] finished in
-            guard let self else { return }
-            lock.lock()
-            let wasStopping = stopping
-            lock.unlock()
             pipe.fileHandleForReading.readabilityHandler = nil
-            if !wasStopping {
-                onUnexpectedExit?(finished.terminationStatus)
-            }
+            guard let self else { return }
+            // Unexpected only while it is still the core in charge. `stop()`
+            // lets go of a process before signalling it, so one that was asked
+            // to leave — or replaced by the next start — is no longer that.
+            // This used to be one `stopping` flag for every process, which the
+            // next start cleared: a core stopped and replaced at once could
+            // report its own requested exit as a crash of the new one.
+            lock.lock()
+            let inCharge = self.process === finished
+            if inCharge { self.process = nil }
+            lock.unlock()
+            if inCharge { onUnexpectedExit?(finished.terminationStatus) }
         }
 
         lock.lock()
-        stopping = false
         logLines.removeAll()
-        lock.unlock()
-
-        try process.run()
-
-        lock.lock()
         self.process = process
         lock.unlock()
+
+        do {
+            try process.run()
+        } catch {
+            lock.lock()
+            if self.process === process { self.process = nil }
+            lock.unlock()
+            throw error
+        }
     }
 
     /// Stops the core.
@@ -268,7 +274,6 @@ public final class MihomoProcess: @unchecked Sendable {
     public func stop(waitForExit: Bool = true) {
         lock.lock()
         let running = process
-        stopping = true
         process = nil
         lock.unlock()
 

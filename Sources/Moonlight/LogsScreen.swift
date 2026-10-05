@@ -12,6 +12,7 @@ import MoonlightCore
 struct LogsScreen: View {
     @EnvironmentObject var tunnel: TunnelController
     @EnvironmentObject var logs: LogStore
+    @EnvironmentObject var activity: AppActivity
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
@@ -44,8 +45,16 @@ struct LogsScreen: View {
     var body: some View {
         VStack(spacing: 12) {
             controls
-            table
+            // Filtered once per redraw; the table used to run the filter over
+            // the whole log four times for every line that arrived.
+            table(filtered)
         }
+        // The core's line-per-connection is asked for only while this page
+        // is on screen — see `LogStore.setDetailed`. Its warnings and
+        // errors, and the app's own lines, are kept all the time.
+        .onAppear { logs.setDetailed(activity.windowVisible) }
+        .onDisappear { logs.setDetailed(false) }
+        .onChange(of: activity.windowVisible) { logs.setDetailed($0) }
     }
 
     private var controls: some View {
@@ -114,7 +123,7 @@ struct LogsScreen: View {
         }
     }
 
-    private var table: some View {
+    private func table(_ rows: [LogEntry]) -> some View {
         Panel(radius: Radii.card, padding: 0) {
             VStack(spacing: 0) {
                 header
@@ -122,20 +131,20 @@ struct LogsScreen: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(filtered) { entry in
+                            ForEach(rows) { entry in
                                 LogRow(entry: entry).id(entry.id)
                             }
                         }
                     }
                     .mlScrollIndicators(hidden: false)
-                    .onChange(of: filtered.count) { _ in
+                    .onChange(of: rows.last?.id) { last in
                         // Follow the tail, the way a terminal does, unless the
                         // reader has scrolled away to look at something.
-                        guard follow, let last = filtered.last else { return }
-                        withAnimation(Motion.standard) { proxy.scrollTo(last.id, anchor: .bottom) }
+                        guard follow, let last else { return }
+                        withAnimation(Motion.standard) { proxy.scrollTo(last, anchor: .bottom) }
                     }
                 }
-                if filtered.isEmpty {
+                if rows.isEmpty {
                     Text(L.t(.logEmpty, locale))
                         .font(.ml(TypeScale.meta))
                         .foregroundStyle(palette.textMuted)

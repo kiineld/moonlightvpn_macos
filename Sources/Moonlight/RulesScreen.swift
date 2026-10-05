@@ -92,6 +92,7 @@ struct RulesScreen: View {
             // A sheet is a window of its own, and takes none of this one's
             // theme or language with it unless handed them.
             .environment(\.palette, palette)
+            .environment(\.liquidGlass, settings.liquidGlass)
             .mlLocale(locale)
             .preferredColorScheme(settings.theme == .dark ? .dark : .light)
         }

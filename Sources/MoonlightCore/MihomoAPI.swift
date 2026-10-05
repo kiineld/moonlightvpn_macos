@@ -67,13 +67,37 @@ public actor MihomoAPI {
     /// Polls until the core answers, or gives up. Called right after spawn:
     /// mihomo binds its controller after loading geodata, which on a cold start
     /// includes downloading it.
-    public func waitUntilReady(timeout: TimeInterval = 30) async -> Bool {
+    ///
+    /// `alive` says whether there is still anything to wait for. A core that
+    /// died on the way up, or logged that it could not bind its controller,
+    /// will never answer, and waiting out the full timeout for it only delays
+    /// the restart that fixes it.
+    public func waitUntilReady(
+        timeout: TimeInterval = 30,
+        while alive: (@Sendable () -> Bool)? = nil
+    ) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if (try? await version()) != nil { return true }
+            if await answers() { return true }
+            if let alive, !alive() { return false }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
         return false
+    }
+
+    /// Whether the core answers right now.
+    ///
+    /// On loopback a core that is up answers in a millisecond or two, so this
+    /// does not wait the session's fifteen seconds to find out: a process can
+    /// be running and still not be a working core — hung, or without the
+    /// controller it failed to bind — and only asking tells the two apart.
+    public func answers(within timeout: TimeInterval = 2) async -> Bool {
+        guard let url = URL(string: base.absoluteString + "/version") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+        guard let (_, response) = try? await session.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
     }
 
     public func version() async throws -> String {

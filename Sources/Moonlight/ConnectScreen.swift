@@ -69,8 +69,8 @@ struct ConnectScreen: View {
                 page: height, centre: centre, column: aboveButton + button + belowButton))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .onPreferenceChange(AboveButtonKey.self) { settle(&aboveButton, $0) }
-        .onPreferenceChange(BelowButtonKey.self) { settle(&belowButton, $0) }
+        .onPreferenceChange(AboveButtonKey.self) { settle($aboveButton, $0) }
+        .onPreferenceChange(BelowButtonKey.self) { settle($belowButton, $0) }
         // Over the page rather than in it, so its arrival moves nothing; at
         // the foot, where it covers neither the time nor the button. The
         // curve is scoped to the note: on the page it would also have
@@ -106,12 +106,18 @@ struct ConnectScreen: View {
     /// appearing under the button (an error, the service's message) used to
     /// re-centre the page in a single frame, which read as the page jumping
     /// every time a connect started or a refresh finished.
-    private func settle(_ value: inout CGFloat, _ measured: CGFloat) {
-        guard abs(value - measured) > 0.5 else { return }
-        if value == 0 {
-            value = measured
+    ///
+    /// Through a binding, not `inout`. An `inout` state is written back when
+    /// the call returns — after `withAnimation` has already closed — so the
+    /// curve wrapped nothing and the page went on jumping: folding the
+    /// announcement moved everything above it at once while the banner itself
+    /// was still closing.
+    private func settle(_ value: Binding<CGFloat>, _ measured: CGFloat) {
+        guard abs(value.wrappedValue - measured) > 0.5 else { return }
+        if value.wrappedValue == 0 {
+            value.wrappedValue = measured
         } else {
-            withAnimation(Motion.standard) { value = measured }
+            withAnimation(Motion.standard) { value.wrappedValue = measured }
         }
     }
 
@@ -539,7 +545,7 @@ private struct Orbit: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 60)) { context in
             let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
             Circle()
                 .trim(from: 0, to: 0.22)

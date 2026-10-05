@@ -14,13 +14,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var item: NSStatusItem?
     private let tunnel: TunnelController
     private let settings: AppSettings
+    private let activity: AppActivity
     private let popover = NSPopover()
     private let tray = TrayState()
     private var cancellables: Set<AnyCancellable> = []
 
-    init(tunnel: TunnelController, settings: AppSettings) {
+    init(tunnel: TunnelController, settings: AppSettings, activity: AppActivity) {
         self.tunnel = tunnel
         self.settings = settings
+        self.activity = activity
         super.init()
 
         popover.behavior = .transient
@@ -88,6 +90,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // As tall as the design wants, but never past the screen it opens on.
         let room = (sender.window?.screen?.visibleFrame.height ?? 900) - 24
         popover.contentSize = NSSize(width: TrayMetrics.width, height: min(TrayMetrics.height, room))
+        // Before it shows, so the speeds are already being read when it does.
+        activity.trayOpen = true
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         // Key, so the search field takes typing without the app coming forward
         // and pulling its window up behind the tray.
@@ -97,6 +101,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         tray.pinned = false
         popover.contentViewController = nil
+        activity.trayOpen = false
     }
 
     private func openWindow() {

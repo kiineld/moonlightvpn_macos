@@ -88,6 +88,11 @@ TUN is the one exception. Its core has to run as root under the helper, so
 connecting there stops the idle core and starts the privileged one; disconnecting
 reverses it.
 
+Warm is for someone who may press the button. With nothing connected and nothing
+of the app on screen — closed to the menu bar, hidden, minimised — the idle core
+is stopped after three minutes, and started again the moment the window or the
+tray opens; the server list and the saved latencies stay in the app meanwhile.
+
 ## Two ways traffic reaches the tunnel
 
 These are different mechanisms, not a preference.
@@ -154,7 +159,8 @@ Two screens over the core's own streams.
 and that pairing is the point: read apart, a failed connect is a core error with
 no cause; together it is "the app switched to TUN, then the core could not take
 the route". Filterable by source, by level (as a floor — WARN means warnings and
-errors) and by text.
+errors) and by text. The core's warnings and errors are kept all the time; its
+`info` lines — one per connection — only from when the page is opened.
 
 **Connections** polls `/connections` once a second and groups by process, which
 is the question people actually bring to it: is *this program* going through the
@@ -192,6 +198,62 @@ That clean-up is also why **only one copy runs at a time**. A second copy — sa
 one opened from the DMG while the installed one runs — would take the first
 one's core for an orphan and stop it. It now brings the running copy forward
 and exits before touching anything.
+
+### Keeping the core up
+
+"The core did not answer" used to be an error the user was shown, and a core
+that died under a live tunnel ended the session with "connect again". Neither is
+something a person should have to deal with, and four things were behind them:
+
+- **A taken port.** mihomo does not exit when it cannot bind its API or its
+  proxy port — it logs one line and runs on without that listener, alive and
+  never going to answer. Another client's core on the same port did it, and so
+  did this app's own core from a moment before, still on its way out. Both ports
+  are now checked before every start (`LocalPort`): a core of ours is given
+  three seconds to leave, and anything still there after that is someone else's,
+  so the app moves to the next free port and remembers it.
+- **Running is not answering.** The check for "is there a core" was whether the
+  process was alive. It is now whether its API answers, so a deaf or hung core
+  is replaced the next time anything needs one, instead of failing every call
+  until the app was restarted.
+- **One try.** A start is tried three times and a connect twice before anything
+  is reported, and a core that died on the way up — or said it could not have
+  its port — is not waited on for the full thirty seconds first.
+- **Nothing brought it back.** When the core exits under a tunnel it is started
+  again in place: the proxy settings still point at its port (or the new TUN
+  core re-makes the routes), the chosen server is put back, and the window reads
+  "connecting" for the second or two that takes. A watchdog asks a connected
+  core every fifteen seconds whether it is there, which is the only way to learn
+  that it hung — or that the helper's core, which is not this process's child,
+  is gone. Three restarts in two minutes is the limit (`RestartBudget`); past
+  it the tunnel comes down and says the core stopped and would not come back.
+
+The process supervisor also told a crash from a stop by one flag shared by every
+process it had started, which the next start cleared — a core stopped and
+replaced at once could report its own requested exit as the new one's crash. An
+exit is now unexpected only for the process still in charge.
+
+### Nothing for the eye when there is no eye
+
+A VPN client spends most of its life closed to the menu bar, and it used to work
+as hard there as with its window open. `AppActivity` follows whether the window
+is on screen (the window server's own `occlusionState`, so closed, hidden,
+minimised and fully covered all count) and whether the tray is open, and the
+rest stops when neither is:
+
+- the uptime clock and the `/traffic` stream — a timer and a sample every second
+  for as long as the tunnel was up — are not run; the clock is worked out from
+  the start time when someone looks again;
+- the connections page stops polling, and no longer animates every answer: the
+  byte counts change each second, so the table was mid-spring for as long as the
+  page was open. Only rows arriving or leaving animate now;
+- the core's log is followed at `warning`. At `info` the core writes a line per
+  connection — dozens a second under a browser — and each was parsed, redacted
+  and published on the main thread whether or not the log was open. Those lines
+  are taken only while the Logs page is on screen, and arrive in batches;
+- the idle core is rested (above).
+
+The tunnel, and the watch kept over its core, do not depend on any of it.
 
 ### Quitting, and starting at login
 
@@ -367,7 +429,7 @@ unlimited, and showing "0 GB" for it would be a lie the user acts on.
 |---|---|
 | `subscription-userinfo` | traffic used and allowed, expiry; `0` means unlimited |
 | `profile-title` | the plan name |
-| `announce` | a banner on the connect and subscription screens, hidden per message |
+| `announce` | a banner on the connect and subscription screens and in the tray; folds to its first line, or hides, per message |
 | `profile-web-page-url` | where **Продлить подписку** goes, before the bot |
 | `support-url` | where **Поддержка** goes, before the built-in link |
 | `profile-update-interval` | the default auto-update interval, in hours |
@@ -614,6 +676,15 @@ desktop, blurred by the system (`NSVisualEffectView`, behind-window), under
 black at three quarters, with a faint light falling in from two corners. The
 window still reads as black, and the glass on it has real light to bend.
 
+**Settings → Liquid Glass** switches it off. Every surface then draws the flat
+one an older system gets, the canvas goes solid and the window opaque, and the
+blur behind it is not there at all: lensing the desktop behind several dozen
+shapes, and blurring it under the whole window, is work the graphics processor
+redoes whenever anything behind the window changes. The two looks crossfade on
+the standard curve, each surface fading as a transition — changing the glass to
+its `identity` variant instead dropped the tint a beat before the material, and
+the sidebar flashed lighter on the way out.
+
 The app used to reach for `NSGlassEffectView` by name at runtime, because it
 built against the macOS 15 SDK; hosted in SwiftUI that view drew flat and could
 not follow an animating frame. It now builds against the macOS 26 SDK, and the
@@ -677,7 +748,7 @@ without the main window coming up behind it.
 swift run moonlight-tests
 ```
 
-347 checks. A plain executable rather than XCTest, because XCTest ships with
+390 checks. A plain executable rather than XCTest, because XCTest ships with
 Xcode and this package builds with the Command Line Tools alone.
 
 They cover the parts where correctness is not visual: `subscription-userinfo`
@@ -696,6 +767,14 @@ configs are validated but never started, because a test suite must not ask for
 root. It also has the core load a `GEOSITE`/`GEOIP` config from a home it has
 never seen, with `geox-url` pointed at a closed port — and, as the control,
 fail to from an empty one — so a first launch is shown to need no network.
+
+The controller itself is driven over that core too (`ControllerTests`): a start
+on a Mac where its API port is taken, a connect, a core killed and a core hung
+under the tunnel, a core that keeps dying, and a rest while nobody is looking.
+Its surroundings are the test's own (`TunnelController.Environment`) — a folder
+of its own, preferences kept in memory, a helper socket that does not exist, a
+proxy control that changes nothing — so it cannot reach the network settings of
+the Mac it runs on, or the tunnel of whoever is running it.
 
 ## Configuration
 

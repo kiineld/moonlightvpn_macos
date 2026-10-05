@@ -51,9 +51,48 @@ public final class TunnelController: ObservableObject {
 
     // MARK: Collaborators
 
+    /// What the controller needs from the machine around it, and how patient
+    /// it is. The app runs on ``live``; the test suite hands in its own, so it
+    /// can take a real core through a connect, a crash and a restart without
+    /// touching this Mac's proxy settings, the installed helper, or the tunnel
+    /// of whoever is running it.
+    public struct Environment: Sendable {
+        /// Where the subscription and the core's home are kept.
+        public var support: URL
+        public var helper: HelperClient
+        public var proxy: ProxyControl
+        /// How long the idle core is left running with nothing of the app on
+        /// screen and nothing connected.
+        public var parkDelay: TimeInterval
+        /// How often a connected core is asked whether it is still there.
+        public var watchdogInterval: TimeInterval
+
+        public init(
+            support: URL,
+            helper: HelperClient = HelperClient(),
+            proxy: ProxyControl = .system,
+            parkDelay: TimeInterval = 180,
+            watchdogInterval: TimeInterval = 15
+        ) {
+            self.support = support
+            self.helper = helper
+            self.proxy = proxy
+            self.parkDelay = parkDelay
+            self.watchdogInterval = watchdogInterval
+        }
+
+        public static var live: Environment {
+            Environment(support: FileManager.default
+                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Moonlight", isDirectory: true))
+        }
+    }
+
     private let preferences: Preferences
+    private let environment: Environment
     private let core: MihomoProcess
-    private let helper = HelperClient()
+    private let helper: HelperClient
+    private let proxy: ProxyControl
     private let subscriptions: SubscriptionClient
     private var api: MihomoAPI
 
@@ -84,8 +123,31 @@ public final class TunnelController: ObservableObject {
     /// one even if the preference changed while connected.
     private var activeMode: TunnelMode?
 
-    public init(preferences: Preferences = .shared, bundle: Bundle = .main) {
+    // Keeping the core alive — see "Keeping the core up" below.
+
+    /// Restarts left before a core that keeps dying is given up on.
+    private var restartBudget = RestartBudget()
+    /// Set while the tunnel's core is being restarted on purpose — brought back
+    /// after it died, or reloaded under TUN — so the exit handler and the
+    /// watchdog do not take that for another death and restart it again.
+    private var restarting = false
+    private var watchdog: Task<Void, Never>?
+    /// Whether anything of the app is on screen — see ``setWatched(_:)``.
+    private var watched = true
+    /// The wait before the idle core is rested — see ``parkWhenIdle()``.
+    private var parking: Task<Void, Never>?
+    /// The app is on its way out: nothing is to be started any more.
+    private var quitting = false
+
+    public init(
+        preferences: Preferences = .shared,
+        bundle: Bundle = .main,
+        environment: Environment = .live
+    ) {
         self.preferences = preferences
+        self.environment = environment
+        helper = environment.helper
+        proxy = environment.proxy
         self.subscriptions = SubscriptionClient(device: DeviceIdentity(
             hwid: preferences.hwid,
             osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
@@ -93,9 +155,7 @@ public final class TunnelController: ObservableObject {
             appVersion: bundle.appVersion
         ))
 
-        support = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Moonlight", isDirectory: true)
+        support = environment.support
         // The core's home as well, since its config is written there before
         // the core first starts.
         let coreHome = support.appendingPathComponent("core", isDirectory: true)
@@ -380,7 +440,10 @@ public final class TunnelController: ObservableObject {
             await updateRedactions()
             await refreshRoutingInputs()
 
-            if state.isConnected || core.isRunning {
+            // A core that is up, not merely running: reloading one that does
+            // not answer fails, and failed the whole refresh with it.
+            let coreUp = state.isConnected ? true : await coreAnswers()
+            if coreUp {
                 // Reload in place rather than reconnecting: a refresh should not
                 // drop a working tunnel, and the idle core has to pick up the new
                 // nodes too — otherwise the list falls back to the raw `proxies:`
@@ -393,7 +456,15 @@ public final class TunnelController: ObservableObject {
                 // list for the raw one and back made every refresh flicker
                 // between two different lists and counts.
                 if nodes.isEmpty { nodes = try await nodesFromPanelConfig() }
-                await ensureCoreRunning()
+                // A rested core stays rested through a refresh nobody is
+                // watching; it starts on the new subscription when someone is.
+                if watched {
+                    // A start already under way — the warm-up at launch, racing
+                    // this — may have read the subscription before it was
+                    // rewritten, and would go on offering the old servers.
+                    let underWay = coreStartup != nil
+                    if await ensureCoreRunning(), underWay { try await reloadRunningCore() }
+                }
             }
             return true
         } catch {
@@ -435,42 +506,154 @@ public final class TunnelController: ObservableObject {
     }
 
     private func startIdleCore() async -> Bool {
-        guard !coreHandover else { return false }
-        let helper = helper, core = core, configURL = configURL, panelURL = panelURL
-        let overrides = overrides(mode: .systemProxy)
-        // The helper's core counts: in TUN mode it is the one answering. Checked
-        // regardless of `activeMode`, because a core left running by a previous
-        // session is running whether or not this one knows about it.
-        let running = await offMain { (try? helper.status().running) == true || core.isRunning }
-        if running { return true }
+        guard !coreHandover, !quitting else { return false }
+        if await coreAnswers() { return true }
+        // Over a TUN tunnel the core is the helper's, and bringing that one
+        // back is the tunnel's business (see `recoverCore`): an idle core
+        // started here would take the ports it needs.
+        guard activeMode != .tun else { return false }
 
-        do {
-            try await offMain {
-                let yaml = try MihomoConfig.build(
-                    panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
-                    overrides: overrides
-                )
-                try yaml.write(to: configURL, atomically: true, encoding: .utf8)
-                try core.validate(configPath: configURL)
-                try core.start(configPath: configURL)
+        var failure: Error?
+        for attempt in 1...Self.startAttempts {
+            do {
+                try await launchIdleCore()
+                failure = nil
+                break
+            } catch let error as CoreUnresponsive {
+                failure = error
+                LogStore.shared.client(
+                    "Core did not answer (attempt \(attempt) of \(Self.startAttempts))"
+                        + (attempt < Self.startAttempts ? " — starting it again" : ""),
+                    level: .warning)
+            } catch {
+                // The core refused the config, or is missing from the bundle:
+                // starting it again would end the same way.
+                failure = error
+                break
             }
-        } catch {
-            issue = TunnelIssue.classify(error)
-            LogStore.shared.client("Core would not start: \(error.localizedDescription)", level: .error)
+        }
+        if let failure {
+            issue = TunnelIssue.classify(failure)
+            LogStore.shared.client("Core would not start: \(failure.localizedDescription)", level: .error)
             return false
         }
 
-        guard await api.waitUntilReady() else {
-            issue = .coreFailed
-            LogStore.shared.client("Core did not answer after starting", level: .error)
-            core.stop()
-            return false
-        }
+        // It is up, so whatever said it was not no longer applies.
+        if issue == .coreFailed || issue == .coreStopped { issue = nil }
         try? await discoverSelector()
         restoreLatencies()
         LogStore.shared.followCore(api)
         LogStore.shared.client("Core ready — \(nodes.count) entries offered")
+        parkWhenIdle()
         return true
+    }
+
+    /// How many times in a row the core is started before the app says it
+    /// could not start it.
+    private static let startAttempts = 3
+    /// How many times a connect is tried before its failure is shown.
+    private static let connectAttempts = 2
+
+    /// Whether a core is up — which means answering, not merely running.
+    ///
+    /// "Running" used to be enough, and it is not the same thing. A core whose
+    /// controller port was taken when it started keeps running without one;
+    /// so does one that hung. Either passed for a working core, every call to
+    /// it failed, and nothing restarted it until the app was.
+    private func coreAnswers() async -> Bool {
+        let helper = helper, core = core
+        // The helper's core counts: in TUN mode it is the one answering, and
+        // one left by a previous session is running whether or not this one
+        // knows about it.
+        let known = await offMain { core.isRunning || (try? helper.status().running) == true }
+        guard known else { return false }
+        return await api.answers()
+    }
+
+    /// The two loopback ports a core listens on.
+    private struct Ports: Sendable {
+        var controller: Int
+        var mixed: Int
+    }
+
+    /// Ports the core can actually have, as near the wanted ones as possible.
+    ///
+    /// A core of this app's from a previous run is given a moment to leave —
+    /// it was signalled at launch and takes a second or so to go. Anything
+    /// still holding a port after that is somebody else's (another client's
+    /// core, usually), and the app moves rather than fight over it.
+    nonisolated private static func freePorts(wanted: Ports, support: URL) -> Ports {
+        let free = { LocalPort.isFree(wanted.controller) && LocalPort.isFree(wanted.mixed) }
+        if !free() {
+            MihomoProcess.reapOrphans(dataDirectory: support)
+            let deadline = Date().addingTimeInterval(3)
+            while !free(), Date() < deadline { usleep(100_000) }
+        }
+        var ports = wanted
+        if !LocalPort.isFree(ports.controller) {
+            ports.controller = LocalPort.firstFree(from: wanted.controller + 1, avoiding: [wanted.mixed])
+                ?? wanted.controller
+        }
+        if !LocalPort.isFree(ports.mixed) {
+            ports.mixed = LocalPort.firstFree(from: wanted.mixed + 1, avoiding: [ports.controller])
+                ?? wanted.mixed
+        }
+        return ports
+    }
+
+    /// Takes up the ports a core has just been started on.
+    private func adopt(_ ports: Ports) {
+        if ports.controller != preferences.controllerPort {
+            LogStore.shared.client("The core's API port was taken — moved to \(ports.controller)",
+                                   level: .warning)
+            preferences.controllerPort = ports.controller
+            api = MihomoAPI(port: ports.controller, secret: preferences.coreSecret)
+        }
+        if ports.mixed != preferences.mixedPort {
+            LogStore.shared.client("The proxy port was taken — moved to \(ports.mixed)",
+                                   level: .warning)
+            preferences.mixedPort = ports.mixed
+        }
+    }
+
+    /// What the core writes when it could not have its API port. It carries on
+    /// running without one, so there is nothing to wait for.
+    nonisolated private static let controllerRefused = "External controller listen error"
+
+    /// One attempt at starting the unprivileged core and hearing from it.
+    private func launchIdleCore() async throws {
+        let helper = helper, core = core, configURL = configURL, panelURL = panelURL
+        let support = support, base = overrides(mode: .systemProxy)
+        let ports = try await offMain { () -> Ports in
+            // Whatever is here is not answering, or it would not have come to
+            // this — and it holds the ports the new one needs.
+            core.stop()
+            if (try? helper.status().running) == true { try? helper.stop() }
+            let ports = Self.freePorts(
+                wanted: Ports(controller: base.controllerPort, mixed: base.mixedPort),
+                support: support)
+            var overrides = base
+            overrides.controllerPort = ports.controller
+            overrides.mixedPort = ports.mixed
+            let yaml = try MihomoConfig.build(
+                panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                overrides: overrides
+            )
+            try yaml.write(to: configURL, atomically: true, encoding: .utf8)
+            try core.validate(configPath: configURL)
+            try core.start(configPath: configURL)
+            return ports
+        }
+        adopt(ports)
+
+        let alive: @Sendable () -> Bool = {
+            core.isRunning && !core.recentLog.contains(Self.controllerRefused)
+        }
+        guard await api.waitUntilReady(while: alive) else {
+            let log = core.recentLog.split(whereSeparator: \.isNewline).suffix(6).joined(separator: "\n")
+            await offMain { core.stop() }
+            throw CoreUnresponsive(log: log)
+        }
     }
 
     public func connect() async {
@@ -481,89 +664,146 @@ public final class TunnelController: ObservableObject {
         }
         state = .connecting
         issue = nil
-        LogStore.shared.client("Connecting via \(preferences.tunnelMode == .tun ? "TUN" : "system proxy")")
+        let mode = preferences.tunnelMode
+        LogStore.shared.client("Connecting via \(mode == .tun ? "TUN" : "system proxy")")
 
-        do {
-            let mode = preferences.tunnelMode
-            switch mode {
-            case .systemProxy:
-                // The core is already up for probing; connecting is only a
-                // matter of pointing the machine at it.
-                guard await ensureCoreRunning() else {
-                    throw MihomoProcess.Failure.exited(0, "core unavailable")
+        var attempt = 1
+        while true {
+            do {
+                try await establish(mode)
+                break
+            } catch {
+                await teardown()
+                // A core that died on the way up, or stopped answering between
+                // two steps, is worth one more go before anyone is told.
+                if attempt < Self.connectAttempts, Self.worthAnotherTry(error) {
+                    attempt += 1
+                    issue = nil
+                    LogStore.shared.client(
+                        "Connect did not go through (\(error.localizedDescription)) — trying again",
+                        level: .warning)
+                    continue
                 }
-                // Recorded before anything is changed, so a crash between the
-                // two still leaves something to restore at the next launch.
-                if preferences.proxySnapshot == nil {
-                    preferences.proxySnapshot = await offMain { SystemProxy.snapshot() }
-                }
-                let port = preferences.mixedPort
-                await offMain { SystemProxy.enable(port: port) }
-
-            case .tun:
-                await refreshHelperStatus()
-                if !helperIsCurrent { try await updateHelper() }
-                // An idle core still starting would come up after the stop
-                // below and hold the ports the privileged one needs.
-                if let pending = coreStartup { _ = await pending.value }
-                let core = core, helper = helper, panelURL = panelURL
-                let overrides = overrides(mode: .tun)
-                try await handingOver {
-                    // TUN needs the core to run as root, so the idle one has to go.
-                    core.stop()
-                    let yaml = try MihomoConfig.build(
-                        panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
-                        overrides: overrides
-                    )
-                    try helper.version()
-                    try helper.start(config: yaml)
-                }
-                // From here the helper's core is the one to read and to stop.
-                // Set only after the checks below, `coreLog` read the idle
-                // core's log, so a TUN that failed to come up — another VPN
-                // holding the routes — passed for connected; and a failure
-                // before then left the privileged core running.
-                activeMode = .tun
-
-                // Longer than the default: a panel config with `rule-providers`
-                // downloads them before the core binds its controller, and the
-                // window where the app still says "connecting" while traffic is
-                // already flowing is exactly what that timeout governs.
-                LogStore.shared.followCore(api)
-                guard await api.waitUntilReady(timeout: 90) else {
-                    let log = await readCoreLog()
-                    throw MihomoProcess.Failure.exited(0, log)
-                }
-                // A TUN interface that fails to come up does not stop the core:
-                // it keeps running and keeps answering its API, so without this
-                // the app reports a healthy tunnel while nothing is routed.
-                try await Task.sleep(nanoseconds: 700_000_000)
-                let log = await readCoreLog()
-                if let reason = MihomoProcess.tunFailure(in: log) {
-                    throw TunFailure(routesTaken: MihomoProcess.routesTaken(in: log),
-                                     reason: reason)
-                }
+                // A step below may already have said something more specific —
+                // "no usable servers" beats "the core would not start".
+                if issue == nil { issue = TunnelIssue.classify(error) }
+                LogStore.shared.client("Connect failed: \(error.localizedDescription)", level: .error)
+                state = .failed(error.localizedDescription)
+                await fallBackToIdleCore()
+                return
             }
-            activeMode = mode
-
-            try await discoverSelector()
-            await applySelection()
-
-            startedAt = Date()
-            meter.start()
-            beginMonitoring()
-            state = .connected
-            LogStore.shared.client("Connected — \(selectedNode ?? "auto")")
-        } catch {
-            // A step below may already have said something more specific —
-            // "no usable servers" beats "the core would not start".
-            if issue == nil { issue = TunnelIssue.classify(error) }
-            LogStore.shared.client("Connect failed: \(error.localizedDescription)", level: .error)
-            await teardown()
-            state = .failed(error.localizedDescription)
-            // Fall back to an idle core so the server list and ping keep working.
-            await ensureCoreRunning()
         }
+
+        startedAt = Date()
+        restartBudget = RestartBudget()
+        beginMonitoring()
+        startWatchdog()
+        state = .connected
+        LogStore.shared.client("Connected — \(selectedNode ?? "auto")")
+    }
+
+    /// The idle core again after a failure, so the server list and ping keep
+    /// working — with what the failure said left on screen: a core that then
+    /// starts would otherwise take the explanation away with it.
+    private func fallBackToIdleCore() async {
+        let shown = issue
+        if await ensureCoreRunning() { issue = shown }
+    }
+
+    /// Everything a connect does up to the tunnel carrying traffic. Throws at
+    /// the first step that fails; the caller undoes what was done.
+    private func establish(_ mode: TunnelMode) async throws {
+        switch mode {
+        case .systemProxy:
+            // The core is already up for probing; connecting is only a
+            // matter of pointing the machine at it.
+            guard await ensureCoreRunning() else {
+                throw MihomoProcess.Failure.exited(0, "core unavailable")
+            }
+            // Recorded before anything is changed, so a crash between the
+            // two still leaves something to restore at the next launch.
+            let proxy = proxy
+            if preferences.proxySnapshot == nil {
+                preferences.proxySnapshot = await offMain { proxy.snapshot() }
+            }
+            let port = preferences.mixedPort
+            await offMain { proxy.enable(port) }
+
+        case .tun:
+            await refreshHelperStatus()
+            if !helperIsCurrent { try await updateHelper() }
+            // An idle core still starting would come up after the stop
+            // below and hold the ports the privileged one needs.
+            if let pending = coreStartup { _ = await pending.value }
+            try await launchTunCore()
+        }
+        activeMode = mode
+
+        try await discoverSelector()
+        await applySelection()
+    }
+
+    /// Hands the tunnel to the helper's core and waits until it is carrying it.
+    private func launchTunCore() async throws {
+        let core = core, helper = helper, panelURL = panelURL, support = support
+        let base = overrides(mode: .tun)
+        let ports = try await handingOver { () -> Ports in
+            // TUN needs the core to run as root, so the idle one has to go —
+            // and with it a privileged one left by an attempt before this.
+            core.stop()
+            try helper.version()
+            _ = try? helper.stop()
+            let ports = Self.freePorts(
+                wanted: Ports(controller: base.controllerPort, mixed: base.mixedPort),
+                support: support)
+            var overrides = base
+            overrides.controllerPort = ports.controller
+            overrides.mixedPort = ports.mixed
+            let yaml = try MihomoConfig.build(
+                panelYAML: try String(contentsOf: panelURL, encoding: .utf8),
+                overrides: overrides
+            )
+            try helper.start(config: yaml)
+            return ports
+        }
+        // From here the helper's core is the one to read and to stop.
+        // Set only after the checks below, `coreLog` read the idle
+        // core's log, so a TUN that failed to come up — another VPN
+        // holding the routes — passed for connected; and a failure
+        // before then left the privileged core running.
+        activeMode = .tun
+        adopt(ports)
+
+        // Longer than the default: a panel config with `rule-providers`
+        // downloads them before the core binds its controller, and the
+        // window where the app still says "connecting" while traffic is
+        // already flowing is exactly what that timeout governs.
+        LogStore.shared.followCore(api)
+        let alive: @Sendable () -> Bool = {
+            guard let status = try? helper.status() else { return false }
+            return status.running && !status.log.contains(Self.controllerRefused)
+        }
+        guard await api.waitUntilReady(timeout: 90, while: alive) else {
+            throw CoreUnresponsive(log: await readCoreLog())
+        }
+        // A TUN interface that fails to come up does not stop the core:
+        // it keeps running and keeps answering its API, so without this
+        // the app reports a healthy tunnel while nothing is routed.
+        try await Task.sleep(nanoseconds: 700_000_000)
+        let log = await readCoreLog()
+        if let reason = MihomoProcess.tunFailure(in: log) {
+            throw TunFailure(routesTaken: MihomoProcess.routesTaken(in: log),
+                             reason: reason)
+        }
+    }
+
+    /// Whether a failed step could go through on a second try: the core died
+    /// or went quiet, as opposed to something another attempt cannot change —
+    /// a config the core refuses, a missing helper, routes another VPN holds.
+    nonisolated private static func worthAnotherTry(_ error: Error) -> Bool {
+        if error is CoreUnresponsive || error is URLError { return true }
+        if case MihomoAPI.Failure.notRunning = error { return true }
+        return false
     }
 
     public func disconnect() async {
@@ -584,6 +824,8 @@ public final class TunnelController: ObservableObject {
     /// parent, so the core went on holding the controller port (and, while
     /// connected, carrying traffic) until the next launch reaped it.
     public func shutdown() async {
+        quitting = true
+        parking?.cancel()
         if state != .disconnected {
             state = .disconnecting
             LogStore.shared.client("Quitting — bringing the tunnel down")
@@ -600,22 +842,22 @@ public final class TunnelController: ObservableObject {
     /// settings go back before the core stops, so no window exists where the
     /// machine points at a listener that is already gone.
     private func teardown() async {
-        trafficTask?.cancel()
-        trafficTask = nil
-        uptimeTimer?.invalidate()
-        uptimeTimer = nil
+        watchdog?.cancel()
+        watchdog = nil
+        pauseMonitoring()
         let mode = activeMode
+        let proxy = proxy
 
         // Only what this app changed goes back. With no snapshot this used to
         // switch *every* proxy off on every network service — TUN never sets
         // one, so each TUN disconnect turned off any other client's proxy (or a
         // company one), and cost three `networksetup` runs per service.
         if let snapshot = preferences.proxySnapshot {
-            await offMain { SystemProxy.restore(snapshot) }
+            await offMain { proxy.restore(snapshot) }
             preferences.proxySnapshot = nil
         } else if mode == .systemProxy {
             let port = preferences.mixedPort
-            await offMain { SystemProxy.disable(pointingAt: port) }
+            await offMain { proxy.disable(port) }
         }
 
         // Both wait for the core to exit, for up to five seconds.
@@ -630,6 +872,7 @@ public final class TunnelController: ObservableObject {
 
         meter.stop()
         startedAt = nil
+        parkWhenIdle()
     }
 
     // MARK: - Selection
@@ -819,12 +1062,16 @@ public final class TunnelController: ObservableObject {
             // the core it supervises — the tunnel blips, which is the cost of not
             // letting an unprivileged process write a root-read path.
             let helper = helper
+            // Its API goes quiet while it restarts, which is not the core
+            // having died — the watchdog is told so.
+            restarting = true
+            defer { restarting = false }
             try await offMain { try helper.start(config: yaml) }
             _ = await api.waitUntilReady()
             // A new process: the old one's log and traffic streams ended with
             // it, which froze the speed readout at its last value.
             LogStore.shared.followCore(api)
-            startTrafficStream()
+            if watched { startTrafficStream() }
         default:
             let core = core, configURL = configURL
             try await offMain {
@@ -1070,25 +1317,69 @@ public final class TunnelController: ObservableObject {
 
     // MARK: - Monitoring
 
+    /// Tells the controller whether anything of the app is on screen — its
+    /// window, or the tray.
+    ///
+    /// Most of what this object does every second is for the eye: the uptime
+    /// clock, the speeds, a warm core so the next latency pass is instant.
+    /// Closed to the menu bar, none of that is seen and all of it still woke
+    /// the processor — a timer and a traffic sample every second for as long
+    /// as the tunnel was up, and a whole core kept running beside an app with
+    /// nothing connected. Unwatched, the clock and the speeds stop being fed,
+    /// and an idle core is rested after a while (see ``parkWhenIdle()``). The
+    /// tunnel itself, and the watch kept over its core, do not depend on it.
+    public func setWatched(_ watched: Bool) {
+        guard watched != self.watched else { return }
+        self.watched = watched
+        if watched {
+            parking?.cancel()
+            parking = nil
+            if state.isConnected {
+                beginMonitoring()
+            } else if !state.isBusy {
+                // Warm again by the time anyone reaches for the server list.
+                Task { await ensureCoreRunning() }
+            }
+        } else {
+            pauseMonitoring()
+            parkWhenIdle()
+        }
+    }
+
+    /// Starts feeding the clock and the speeds, if there is a session to read
+    /// them from and anyone to read them.
     private func beginMonitoring() {
+        guard watched, let startedAt else { return }
+        uptimeTimer?.invalidate()
+        meter.tick(Int(Date().timeIntervalSince(startedAt)))
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let startedAt = self.startedAt else { return }
-                self.meter.uptime = Int(Date().timeIntervalSince(startedAt))
+                self.meter.tick(Int(Date().timeIntervalSince(startedAt)))
             }
         }
+        // A clock read by a person: the system may fire it with its other
+        // timers rather than wake for this one alone.
+        timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)
         uptimeTimer = timer
 
         startTrafficStream()
     }
 
+    private func pauseMonitoring() {
+        uptimeTimer?.invalidate()
+        uptimeTimer = nil
+        trafficTask?.cancel()
+        trafficTask = nil
+        meter.rest()
+    }
+
     private func startTrafficStream() {
         trafficTask?.cancel()
         trafficTask = Task { [api] in
-            // mihomo's /traffic emits per-second deltas, so the session totals
-            // are accumulated here rather than read back from /connections —
-            // which resets whenever a connection closes.
+            // mihomo's /traffic emits one sample a second for as long as
+            // anyone is listening.
             for await sample in api.trafficStream() {
                 if Task.isCancelled { break }
                 await MainActor.run {
@@ -1098,13 +1389,166 @@ public final class TunnelController: ObservableObject {
         }
     }
 
+    /// Rests the idle core once nothing of the app has been on screen for a
+    /// while and nothing is connected.
+    ///
+    /// The core is kept warm so that a latency pass is instant — which is
+    /// worth a running process while someone may press the button, and not
+    /// for the hours an app spends closed to the menu bar with the tunnel
+    /// off. It starts again the moment the window or the tray opens.
+    private func parkWhenIdle() {
+        parking?.cancel()
+        parking = nil
+        guard !watched, !quitting, activeMode == nil else { return }
+        let delay = environment.parkDelay
+        parking = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.parkIdleCore()
+        }
+    }
+
+    private func parkIdleCore() async {
+        guard !watched, !state.isConnected, !state.isBusy, activeMode == nil,
+              coreStartup == nil, !isPinging, !isRefreshing, core.isRunning else { return }
+        LogStore.shared.client("Nothing connected and nothing on screen — resting the core")
+        LogStore.shared.stopFollowingCore()
+        let core = core
+        await offMain { core.stop() }
+    }
+
+    // MARK: - Keeping the core up
+
+    /// Asks a connected core, every so often, whether it is still there.
+    ///
+    /// The unprivileged core reports its own exit, but a core that hangs
+    /// reports nothing, and the helper's core — the one carrying a TUN tunnel
+    /// — is not this process's child at all: when it died the window went on
+    /// saying "connected" over a tunnel that was gone. One request on loopback
+    /// every quarter of a minute is what finding out costs.
+    private func startWatchdog() {
+        watchdog?.cancel()
+        let interval = environment.watchdogInterval
+        watchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                await self.checkCore()
+            }
+        }
+    }
+
+    /// Longer than a start waits for an answer: restarting a core that was only
+    /// slow drops every connection it was carrying.
+    private static let watchdogPatience: TimeInterval = 5
+
+    private func checkCore() async {
+        guard state.isConnected, !restarting else { return }
+        if await api.answers(within: Self.watchdogPatience) { return }
+        // Asked twice before acting on it: a core in the middle of a reload
+        // can miss one question.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        guard state.isConnected, !restarting else { return }
+        if await api.answers(within: Self.watchdogPatience) { return }
+        await recoverCore("stopped answering")
+    }
+
     private func handleCoreExit(_ status: Int32) {
-        guard state.isConnected || state == .connecting else { return }
+        guard !quitting else { return }
         let detail = core.recentLog.split(whereSeparator: \.isNewline).suffix(3).joined(separator: "\n")
-        issue = .coreStopped
         LogStore.shared.client("Core stopped unexpectedly (status \(status))"
-                               + (detail.isEmpty ? "" : "\n\(detail)"), level: .error)
-        Task { await teardown(); state = .failed("Core stopped") }
+                               + (detail.isEmpty ? "" : "\n\(detail)"), level: .warning)
+        // A start or a restart under way is watching this very process, and
+        // deals with its going itself.
+        guard coreStartup == nil, !restarting else { return }
+        if state.isConnected {
+            Task { await recoverCore("stopped (status \(status))") }
+        } else if !state.isBusy, watched, restartBudget.spend() {
+            // Nothing was riding on it; it is only the warm core for the
+            // server list, brought back while there is someone to use it.
+            Task { await ensureCoreRunning() }
+        }
+    }
+
+    /// Brings the core back under a live tunnel, in place.
+    ///
+    /// A core that stopped used to end the session: the tunnel was torn down
+    /// and the window said "the VPN stopped unexpectedly — connect again",
+    /// leaving the user to do by hand the one thing there was to do. Now the
+    /// core is started again where it was — the proxy settings still point at
+    /// its port, the routes are re-made by the new TUN core — and the choice
+    /// of server put back; the window reads "connecting" for the second or two
+    /// that takes. Only a core that will not come back, or keeps going down,
+    /// is reported.
+    private func recoverCore(_ reason: String) async {
+        guard state.isConnected, !restarting, !quitting, let mode = activeMode else { return }
+        restarting = true
+        defer { restarting = false }
+        state = .connecting
+        trafficTask?.cancel()
+        trafficTask = nil
+
+        var failure: Error?
+        if restartBudget.spend() {
+            LogStore.shared.client("Core \(reason) — restarting it", level: .warning)
+            for attempt in 1...Self.connectAttempts {
+                do {
+                    try await revive(mode)
+                    failure = nil
+                    break
+                } catch {
+                    failure = error
+                    guard attempt < Self.connectAttempts, Self.worthAnotherTry(error) else { break }
+                }
+            }
+            // Quit, or told to disconnect, while it was coming back: a core
+            // started for a tunnel nobody wants any more is taken down again.
+            guard state == .connecting, !quitting else {
+                if state == .disconnected, activeMode != nil { await teardown() }
+                return
+            }
+            if failure == nil {
+                LogStore.shared.followCore(api)
+                beginMonitoring()
+                state = .connected
+                LogStore.shared.client("Core is back — the tunnel carries on")
+                return
+            }
+        } else {
+            LogStore.shared.client("Core \(reason) again — it has been restarted "
+                                   + "\(restartBudget.limit) times already, giving up", level: .error)
+        }
+
+        // Whatever more specific there is to say, said; otherwise that it
+        // stopped and would not come back.
+        let specific = failure.map(TunnelIssue.classify)
+        issue = specific == nil || specific == .coreFailed ? .coreStopped : specific
+        if let failure {
+            LogStore.shared.client("Core could not be restarted: \(failure.localizedDescription)",
+                                   level: .error)
+        }
+        await teardown()
+        state = .failed("Core stopped")
+        await fallBackToIdleCore()
+    }
+
+    /// Starts the core again for a tunnel that is already set up around it.
+    private func revive(_ mode: TunnelMode) async throws {
+        switch mode {
+        case .systemProxy:
+            let port = preferences.mixedPort
+            guard await ensureCoreRunning() else {
+                throw MihomoProcess.Failure.exited(0, "core unavailable")
+            }
+            // The listener may have had to move, and the machine has to be
+            // pointed at where it is now.
+            let moved = preferences.mixedPort, proxy = proxy
+            if moved != port { await offMain { proxy.enable(moved) } }
+        case .tun:
+            try await launchTunCore()
+        }
+        try await discoverSelector()
+        await applySelection()
     }
 
     /// A force-quit while connected leaves the machine's proxy pointing at a
@@ -1113,7 +1557,7 @@ public final class TunnelController: ObservableObject {
     /// undone on the next launch.
     private func recoverFromCrash() {
         if let snapshot = preferences.proxySnapshot {
-            SystemProxy.restore(snapshot)
+            proxy.restore(snapshot)
             preferences.proxySnapshot = nil
         }
 

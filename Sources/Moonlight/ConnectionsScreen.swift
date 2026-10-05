@@ -11,6 +11,7 @@ import MoonlightCore
 /// or not. Expanding a row shows the hosts behind it.
 struct ConnectionsScreen: View {
     @EnvironmentObject var tunnel: TunnelController
+    @EnvironmentObject var activity: AppActivity
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
     @Binding var page: Page
@@ -59,8 +60,14 @@ struct ConnectionsScreen: View {
             }
             .animation(Motion.standard, value: showsTable)
         }
-        .onAppear(perform: start)
+        .onAppear { if activity.windowVisible { start() } }
         .onDisappear { poll?.cancel() }
+        // A window that is hidden, minimised or covered is still showing this
+        // page as far as SwiftUI knows, and it went on asking the core for
+        // every connection, every second, with nobody to read the answer.
+        .onChange(of: activity.windowVisible) { visible in
+            if visible { start() } else { poll?.cancel() }
+        }
     }
 
     private var controls: some View {
@@ -189,7 +196,14 @@ struct ConnectionsScreen: View {
                     .filter { !known.contains($0.key) }
                     .sorted { $0.value.reduce(0) { $0 + $1.download } > $1.value.reduce(0) { $0 + $1.download } }
                     .map(\.key)
-                withAnimation(loaded ? Motion.standard : nil) {
+                // Animated only when rows come or go. Every answer used to be
+                // applied on the curve, and since the byte counts change in
+                // each one, the table never stopped animating: half a second
+                // of spring after every one-second poll, for as long as the
+                // page was open.
+                let reshaped = Self.shape(of: latest, expanded: expanded)
+                    != Self.shape(of: connections, expanded: expanded)
+                withAnimation(loaded && reshaped ? Motion.standard : nil) {
                     order += newcomers
                     connections = latest
                     loaded = true
@@ -197,6 +211,18 @@ struct ConnectionsScreen: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
+    }
+}
+
+extension ConnectionsScreen {
+    /// Which rows the table has for these connections: one per process, and
+    /// one per connection of the process that is open.
+    fileprivate static func shape(of connections: [MihomoAPI.Connection], expanded: String?) -> Set<String> {
+        var rows = Set(connections.map(\.process))
+        if let expanded {
+            rows.formUnion(connections.lazy.filter { $0.process == expanded }.map(\.id))
+        }
+        return rows
     }
 }
 
@@ -379,9 +405,20 @@ private struct ProcessIcon: View {
     @Environment(\.palette) private var palette
     let path: String
 
+    /// Asked of the workspace once per app rather than once per redraw: the
+    /// page redraws every second, and each ask is a new image.
+    private static let icons = NSCache<NSString, NSImage>()
+
+    private static func icon(forBundle path: String) -> NSImage {
+        if let cached = icons.object(forKey: path as NSString) { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        icons.setObject(icon, forKey: path as NSString)
+        return icon
+    }
+
     var body: some View {
         if let bundle = AppInventory.bundlePath(forExecutable: path) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: bundle))
+            Image(nsImage: Self.icon(forBundle: bundle))
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 17, height: 17)

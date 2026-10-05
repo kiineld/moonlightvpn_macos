@@ -51,6 +51,10 @@ public final class LogStore: ObservableObject {
 
     private let limit = 2_000
     private var coreStream: Task<Void, Never>?
+    /// The core being followed, so the stream can be reopened at another level.
+    private var followed: MihomoAPI?
+    /// Whether the core's `info` lines are wanted — see ``setDetailed(_:)``.
+    private var detailed = false
     /// Longest first, so a link is masked whole before its host is.
     private var redactions: [String] = []
 
@@ -80,6 +84,20 @@ public final class LogStore: ObservableObject {
 
     public func append(_ level: LogEntry.Level, _ source: LogEntry.Source, _ message: String) {
         entries.append(LogEntry(level: level, source: source, message: redact(message)))
+        trim()
+    }
+
+    /// Several of the core's lines at once: one change to the list, and so one
+    /// redraw of whatever is showing it, however many arrived together.
+    private func append(core lines: [MihomoAPI.LogLine]) {
+        guard !lines.isEmpty else { return }
+        entries.append(contentsOf: lines.map {
+            LogEntry(level: LogEntry.Level(core: $0.type), source: .core, message: redact($0.payload))
+        })
+        trim()
+    }
+
+    private func trim() {
         if entries.count > limit {
             entries.removeFirst(entries.count - limit)
         }
@@ -98,19 +116,65 @@ public final class LogStore: ObservableObject {
     /// Restartable: the stream dies with the core, and the core is swapped when
     /// the tunnel moves between system-proxy and TUN.
     public func followCore(_ api: MihomoAPI) {
+        followed = api
+        openStream()
+    }
+
+    public func stopFollowingCore() {
+        followed = nil
         coreStream?.cancel()
+        coreStream = nil
+    }
+
+    /// Whether to take the core's `info` lines as well as its warnings.
+    ///
+    /// At `info` the core writes a line for every connection it opens — dozens
+    /// a second under a browser — and each one used to be parsed, redacted and
+    /// published on the main thread for the whole time the tunnel was up,
+    /// whether or not anyone had the log open. Warnings and errors are what
+    /// explain a failure after the fact, so those are always kept; the
+    /// per-connection lines are taken only while the log is on screen.
+    public func setDetailed(_ detailed: Bool) {
+        guard detailed != self.detailed else { return }
+        self.detailed = detailed
+        if followed != nil { openStream() }
+    }
+
+    private func openStream() {
+        coreStream?.cancel()
+        guard let api = followed else { return }
+        let level = detailed ? "info" : "warning"
+        let pending = PendingLines()
         coreStream = Task { [weak self] in
-            for await line in api.logStream() {
+            for await line in api.logStream(level: level) {
                 guard !Task.isCancelled else { break }
-                await MainActor.run {
-                    self?.append(LogEntry.Level(core: line.type), .core, line.payload)
+                // The first line of a burst schedules one delivery for all of
+                // it, a quarter of a second on.
+                guard pending.add(line) else { continue }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    self?.append(core: pending.drain())
                 }
             }
         }
     }
+}
 
-    public func stopFollowingCore() {
-        coreStream?.cancel()
-        coreStream = nil
+/// The core's lines between one delivery to the log and the next.
+private final class PendingLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [MihomoAPI.LogLine] = []
+
+    /// Whether this is the first line since the last ``drain()``.
+    func add(_ line: MihomoAPI.LogLine) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        lines.append(line)
+        return lines.count == 1
+    }
+
+    func drain() -> [MihomoAPI.LogLine] {
+        lock.lock(); defer { lock.unlock() }
+        defer { lines = [] }
+        return lines
     }
 }

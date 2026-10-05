@@ -15,6 +15,8 @@ nodePresentationTests()
 autoPickerTests()
 updaterTests()
 geodataTests()
+coreHealthTests()
 coreIntegrationTests()
+await controllerTests()
 
 Check.report()

@@ -20,6 +20,8 @@ final class AppSettings: ObservableObject {
     @Published var sidebarCollapsed: Bool {
         didSet { preferences.sidebarCollapsed = sidebarCollapsed }
     }
+    /// Liquid Glass, or flat surfaces on a solid canvas — see `GlassSurface`.
+    @Published var liquidGlass: Bool { didSet { preferences.liquidGlass = liquidGlass } }
     /// Hours between automatic subscription updates, 0 for never; nil until
     /// chosen, meaning the service's own suggestion.
     @Published var autoUpdateHours: Int? {
@@ -71,6 +73,7 @@ final class AppSettings: ObservableObject {
         autoConnect = preferences.autoConnect
         menuBarIcon = preferences.menuBarIcon
         sidebarCollapsed = preferences.sidebarCollapsed
+        liquidGlass = preferences.liquidGlass
         autoUpdateHours = preferences.autoUpdateHours
         launchAtLogin = Self.systemLaunchAtLogin ?? preferences.launchAtLogin
         preferences.launchAtLogin = launchAtLogin

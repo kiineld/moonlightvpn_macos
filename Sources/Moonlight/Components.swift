@@ -281,7 +281,10 @@ struct InFlight: ViewModifier {
 
     func body(content: Content) -> some View {
         if active {
-            TimelineView(.animation) { context in
+            // Sixty frames a second at most: on a 120 Hz display the timeline
+            // would otherwise redraw twice as often for a glyph turning once
+            // a second.
+            TimelineView(.animation(minimumInterval: 1.0 / 60)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 let phase = t.truncatingRemainder(dividingBy: period) / period
                 switch kind {
@@ -538,28 +541,40 @@ struct QuotaBar: View {
 
 /// The subscription service's announcement (`announce`), as it wrote it.
 ///
-/// Hidden per message: dismissing one does not hide the next, which is new
-/// news by definition.
+/// It can be folded to its first line and opened again, or put away. Both are
+/// remembered per message: folding or dismissing one does nothing to the next,
+/// which is new news by definition. Folding is the gentler of the two — a
+/// message of several lines pushes the server list down the page, and the
+/// only way to have the room back used to be to lose the message.
 struct AnnounceBanner: View {
     @Environment(\.palette) private var palette
     @Environment(\.appLocale) private var locale
     let text: String
 
-    @AppStorage("dismissedAnnouncement") private var dismissed = ""
+    @ObservedObject private var kept = AnnounceMemory.shared
+
+    private var collapsed: Bool { kept.folded == text }
 
     var body: some View {
-        if dismissed != text {
+        if kept.dismissed != text {
             HStack(alignment: .top, spacing: 12) {
                 IconView(.messageCircle, size: 17)
                     .foregroundStyle(palette.accentInk)
                     .padding(.top, 1)
-                Text(text)
-                    .font(.ml(13, .medium))
-                    .foregroundStyle(palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                message
+                Button(action: toggle) {
+                    // One chevron that turns, as on the server picker, rather
+                    // than two glyphs swapped.
+                    IconView(.chevronRight, size: 14, strokeWidth: 2.4)
+                        .rotationEffect(.degrees(collapsed ? 90 : -90))
+                        .foregroundStyle(palette.textMuted)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .pressIcon()
+                .help(L.t(collapsed ? .expandAnnounce : .collapseAnnounce, locale))
                 Button {
-                    withAnimation(Motion.standard) { dismissed = text }
+                    withAnimation(Motion.standard) { kept.dismissed = text }
                 } label: {
                     IconView(.x, size: 14)
                         .foregroundStyle(palette.textMuted)
@@ -573,7 +588,79 @@ struct AnnounceBanner: View {
             .padding(.vertical, 13)
             .mlGlass(.rounded(Radii.card), tint: palette.accent.opacity(0.18),
                      fallback: palette.accentQuiet)
+            .transition(.opacity)
         }
+    }
+
+    /// The message whole, and its first line, one over the other.
+    ///
+    /// Both are always laid out and only the height between them moves, so
+    /// the banner folds in one motion: the whole text stays where it is and
+    /// is covered from below while the single line fades in over its first.
+    /// Swapping a line limit instead re-broke the text on the first frame —
+    /// it snapped to one line with an ellipsis while the card was still
+    /// closing around where the rest had been.
+    private var message: some View {
+        ZStack(alignment: .topLeading) {
+            line.lineLimit(1)
+                .truncationMode(.tail)
+                .opacity(collapsed ? 1 : 0)
+            line.fixedSize(horizontal: false, vertical: true)
+                .opacity(collapsed ? 0 : 1)
+                // Folded it takes no room and hangs below the first line,
+                // where the clip hides it.
+                .frame(height: collapsed ? 0 : nil, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        // The text is the larger target, and what a hand reaches for first.
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+    }
+
+    private var line: some View {
+        Text(text)
+            .font(.ml(13, .medium))
+            .foregroundStyle(palette.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Animated at the source: the page under the banner — the server list,
+    /// the cards of the subscription page, the tray's rows — moves with it,
+    /// on the one curve.
+    private func toggle() {
+        withAnimation(Motion.standard) { kept.folded = collapsed ? "" : text }
+    }
+}
+
+/// What was done with the announcement — folded, or put away — and to which
+/// message, kept across launches and shared by every place the banner shows:
+/// the connect page, the subscription page and the tray.
+///
+/// An object the banner observes rather than `@AppStorage` on the banner. A
+/// value written through the defaults comes back to the view from the
+/// defaults' own observer, outside the transaction that wrote it and so
+/// outside its animation: the banner folded, and went away, in a single frame
+/// whatever curve the write was wrapped in.
+@MainActor
+final class AnnounceMemory: ObservableObject {
+    static let shared = AnnounceMemory()
+
+    /// The message folded to its first line, or none.
+    @Published var folded: String {
+        didSet { UserDefaults.standard.set(folded, forKey: Self.foldedKey) }
+    }
+    /// The message put away, or none.
+    @Published var dismissed: String {
+        didSet { UserDefaults.standard.set(dismissed, forKey: Self.dismissedKey) }
+    }
+
+    private static let foldedKey = "collapsedAnnouncement"
+    private static let dismissedKey = "dismissedAnnouncement"
+
+    private init() {
+        folded = UserDefaults.standard.string(forKey: Self.foldedKey) ?? ""
+        dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey) ?? ""
     }
 }
 

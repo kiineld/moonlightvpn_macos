@@ -82,6 +82,86 @@ func coreIntegrationTests() {
         }
     }
 
+    Check.suite("Core · which exits are unexpected") {
+        let path = process.configURL
+        final class Exits: @unchecked Sendable {
+            private let lock = NSLock()
+            private var count = 0
+            func note() { lock.lock(); count += 1; lock.unlock() }
+            var seen: Int { lock.lock(); defer { lock.unlock() }; return count }
+        }
+        let exits = Exits()
+        process.onUnexpectedExit = { _ in exits.note() }
+        defer { process.onUnexpectedExit = nil }
+        func settle(until done: () -> Bool = { false }) {
+            let deadline = Date().addingTimeInterval(3)
+            while !done(), Date() < deadline { usleep(50_000) }
+        }
+        do {
+            let yaml = try MihomoConfig.build(panelYAML: panel, overrides: overrides(.systemProxy))
+            try yaml.write(to: path, atomically: true, encoding: .utf8)
+
+            // Asked to stop: not a crash.
+            try process.start(configPath: path)
+            process.stop()
+            settle()
+            Check.equal(exits.seen, 0, "a core that was stopped did not exit unexpectedly")
+
+            // Replaced by the next start: the old one's exit is not the new
+            // one's crash — which is what a single "stopping" flag made of it.
+            try process.start(configPath: path)
+            try process.start(configPath: path)
+            settle()
+            Check.equal(exits.seen, 0, "nor did one replaced by the next start")
+            Check.isTrue(process.isRunning, "and the replacement is the one left running")
+
+            // Killed from outside: that is the one to report.
+            let pgrep = Process()
+            pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+            pgrep.arguments = ["-f", "mihomo.*\(home.path)"]
+            let pipe = Pipe()
+            pgrep.standardOutput = pipe
+            try pgrep.run()
+            let found = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            pgrep.waitUntilExit()
+            found.split(whereSeparator: \.isNewline).compactMap { pid_t($0) }.forEach { kill($0, SIGKILL) }
+            settle { exits.seen > 0 }
+            Check.equal(exits.seen, 1, "a core killed from outside is reported, once")
+            Check.isTrue(!process.isRunning, "and is no longer counted as running")
+        } catch {
+            Check.isTrue(false, "the core starts — \(error)")
+        }
+        process.stop()
+    }
+
+    Check.suite("Core · a core whose API port is taken") {
+        // The behaviour the port check exists for, pinned: the core does not
+        // exit when it cannot bind its controller. It logs one line and runs
+        // on without an API — alive, and never going to answer.
+        guard let squatter = Squatter(port: controllerPort) else {
+            Check.isTrue(false, "the test could take the controller port")
+            return
+        }
+        defer { squatter.leave() }
+        let path = process.configURL
+        do {
+            let yaml = try MihomoConfig.build(panelYAML: panel, overrides: overrides(.systemProxy))
+            try yaml.write(to: path, atomically: true, encoding: .utf8)
+            try process.start(configPath: path)
+        } catch {
+            Check.isTrue(false, "the core starts — \(error)")
+            return
+        }
+        defer { process.stop() }
+        let deadline = Date().addingTimeInterval(8)
+        while !process.recentLog.contains("External controller listen error"), Date() < deadline {
+            usleep(100_000)
+        }
+        Check.isTrue(process.recentLog.contains("External controller listen error"),
+                     "it says so in the words the app looks for — log:\n\(process.recentLog)")
+        Check.isTrue(process.isRunning, "and keeps running without its API")
+    }
+
     Check.suite("Core · RESTful API") {
         let path = process.configURL
         do {

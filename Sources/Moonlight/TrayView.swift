@@ -21,6 +21,7 @@ struct TrayView: View {
     var body: some View {
         TrayContent(tray: tray, openWindow: openWindow)
             .environment(\.palette, settings.palette)
+            .environment(\.liquidGlass, settings.liquidGlass)
             .mlLocale(settings.locale)
             .preferredColorScheme(settings.theme == .dark ? .dark : .light)
     }
@@ -29,6 +30,7 @@ struct TrayView: View {
 private struct TrayContent: View {
     @EnvironmentObject var tunnel: TunnelController
     @Environment(\.palette) private var palette
+    @Environment(\.liquidGlass) private var liquidGlass
     @Environment(\.appLocale) private var locale
     @ObservedObject var tray: TrayState
     let openWindow: () -> Void
@@ -354,7 +356,8 @@ private struct TrayContent: View {
         // Over the popover's own glass rather than hiding it: black at three
         // quarters, so the desktop's light still reaches the glass on top.
         ZStack {
-            palette.bgDeep.opacity(0.76)
+            // Solid without glass: there is nothing on top for the light to reach.
+            palette.bgDeep.opacity(liquidGlass ? 0.76 : 1)
             RadialGradient(
                 colors: [palette.text.opacity(0.10), palette.text.opacity(0)],
                 center: .topTrailing, startRadius: 0, endRadius: 360

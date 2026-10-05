@@ -23,10 +23,13 @@ struct MoonlightApp: App {
             RootView(updater: services.updater, tunnel: tunnel)
                 .environmentObject(tunnel)
                 .environmentObject(settings)
+                .environmentObject(services.activity)
                 .environmentObject(LogStore.shared)
                 .onAppear {
                     delegate.tunnel = tunnel
                     delegate.settings = settings
+                    delegate.activity = services.activity
+                    services.activity.attach(tunnel)
                     delegate.attachStatusItem()
                 }
                 .task {
@@ -77,6 +80,9 @@ private final class Services: ObservableObject {
     /// launch check found is what Settings shows — and the banner that
     /// announces it can start the install Settings then follows.
     let updater = Updater()
+    /// Whether the window or the tray is on screen — what lets everything
+    /// done for the eye stop when there is no eye.
+    let activity = AppActivity()
 }
 
 /// "Connect" or "Disconnect" in the menu — the one part of the commands that
@@ -157,6 +163,7 @@ enum MenuBarIcon {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var tunnel: TunnelController?
     var settings: AppSettings?
+    var activity: AppActivity?
     private var statusItem: StatusItemController?
     private var alerts: SubscriptionAlerts?
     private var scheduler: SubscriptionScheduler?
@@ -165,8 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Built once both objects exist, which is when the root view appears.
     @MainActor
     func attachStatusItem() {
-        guard statusItem == nil, let tunnel, let settings else { return }
-        statusItem = StatusItemController(tunnel: tunnel, settings: settings)
+        guard statusItem == nil, let tunnel, let settings, let activity else { return }
+        statusItem = StatusItemController(tunnel: tunnel, settings: settings, activity: activity)
         alerts = SubscriptionAlerts(tunnel: tunnel, settings: settings)
         scheduler = SubscriptionScheduler(tunnel: tunnel)
     }

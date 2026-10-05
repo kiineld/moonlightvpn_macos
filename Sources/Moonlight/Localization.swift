@@ -60,6 +60,7 @@ public enum L {
         case menuBarIcon, menuBarIconSub
         case autoConnect, autoConnectSub
         case language, notifications, notificationsSub
+        case liquidGlass, liquidGlassSub
         case ourChannel, ourChannelSub, support, supportSub
         case version, checkUpdates, keysStayHere
         case modeSystemProxy, modeSystemProxySub, modeTun, modeTunSub, modeProxyShort
@@ -87,6 +88,7 @@ public enum L {
         // Subscription service extras
         case autoUpdate, autoUpdateSub, autoUpdateOff, hoursShort, lastUpdated, neverUpdated
         case trafficResets, removeSubscriptionSub, hideAnnounce
+        case collapseAnnounce, expandAnnounce
         // Rules
         case navRules, titleRules, subtitleRules, rulesMine, rulesProfile, rulesFilter
         case rulesAdd, rulesEdit, rulesOwnCount, rulesProfileCount
@@ -212,6 +214,8 @@ public enum L {
             case .language: return "Язык"
             case .notifications: return "Уведомления"
             case .notificationsSub: return "Об окончании подписки и трафика"
+            case .liquidGlass: return "Liquid Glass"
+            case .liquidGlassSub: return "Стекло и размытый фон окна. Без них приложение расходует меньше энергии"
             case .ourChannel: return "Наш канал"
             case .ourChannelSub: return "Новости и обновления"
             case .support: return "Поддержка"
@@ -302,6 +306,8 @@ public enum L {
             case .trafficResets: return "Трафик обновится"
             case .removeSubscriptionSub: return "Ссылка будет удалена с этого Mac"
             case .hideAnnounce: return "Скрыть"
+            case .collapseAnnounce: return "Свернуть"
+            case .expandAnnounce: return "Развернуть"
             case .navRules: return "Правила"
             case .titleRules: return "Правила"
             case .subtitleRules: return "Куда идёт трафик: ваши правила и правила подписки"
@@ -382,7 +388,7 @@ public enum L {
             case .issueDeviceLimit: return "Достигнут лимит устройств. Отключите другое устройство в личном кабинете."
             case .issueDeviceNotSupported: return "Подписка не принимает это устройство"
             case .issueCoreFailed: return "Не удалось запустить VPN. Подробности — в логах."
-            case .issueCoreStopped: return "VPN неожиданно остановился. Подключитесь снова."
+            case .issueCoreStopped: return "VPN остановился, и перезапустить его не удалось. Подключитесь снова."
             case .issueRoutesTaken: return "Маршруты заняты другим VPN. Закройте его или включите режим системного прокси."
             case .issueTunFailed: return "Не удалось создать TUN-интерфейс. Подробности — в логах."
             case .issueHelperMissing: return "Для TUN нужен системный помощник — установите его в настройках"
@@ -499,6 +505,8 @@ public enum L {
             case .language: return "Language"
             case .notifications: return "Notifications"
             case .notificationsSub: return "When the plan or traffic runs out"
+            case .liquidGlass: return "Liquid Glass"
+            case .liquidGlassSub: return "Glass and the blurred backdrop. The app uses less energy without them"
             case .ourChannel: return "Our channel"
             case .ourChannelSub: return "News and updates"
             case .support: return "Support"
@@ -589,6 +597,8 @@ public enum L {
             case .trafficResets: return "Traffic resets"
             case .removeSubscriptionSub: return "Removes the link from this Mac"
             case .hideAnnounce: return "Hide"
+            case .collapseAnnounce: return "Collapse"
+            case .expandAnnounce: return "Expand"
             case .navRules: return "Rules"
             case .titleRules: return "Rules"
             case .subtitleRules: return "Where traffic goes: your rules and the subscription's"
@@ -669,7 +679,7 @@ public enum L {
             case .issueDeviceLimit: return "Device limit reached. Remove another device in your account."
             case .issueDeviceNotSupported: return "The subscription doesn't accept this device"
             case .issueCoreFailed: return "Couldn't start the VPN. See the logs for details."
-            case .issueCoreStopped: return "The VPN stopped unexpectedly. Connect again."
+            case .issueCoreStopped: return "The VPN stopped and couldn't be restarted. Connect again."
             case .issueRoutesTaken: return "Another VPN owns the system routes. Quit it or use system proxy mode."
             case .issueTunFailed: return "Couldn't create the TUN interface. See the logs for details."
             case .issueHelperMissing: return "TUN needs the system helper — install it in Settings"
