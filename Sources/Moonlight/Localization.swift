@@ -31,7 +31,7 @@ public enum L {
         case bigConnect, bigConnected
         case hintConnect, hintDisconnect
         case downloaded, uploaded, remaining, trafficLeft, timeLeft
-        case servers, nodesCount, auto, autoSubtitle, autoPicked
+        case servers, auto, autoSubtitle, autoPicked
         case noSubscription, noSubscriptionHint, addSubscription
 
         // Sidebar card
@@ -153,7 +153,6 @@ public enum L {
             case .trafficLeft: return "ТРАФИКА"
             case .timeLeft: return "ОСТАЛОСЬ"
             case .servers: return "СЕРВЕРЫ"
-            case .nodesCount: return "узлов"
             case .auto: return "Авто"
             case .autoSubtitle: return "Ближайший узел по пингу"
             case .autoPicked: return "Выбран"
@@ -444,7 +443,6 @@ public enum L {
             case .trafficLeft: return "TRAFFIC LEFT"
             case .timeLeft: return "TIME LEFT"
             case .servers: return "SERVERS"
-            case .nodesCount: return "nodes"
             case .auto: return "Auto"
             case .autoSubtitle: return "Fastest node by latency"
             case .autoPicked: return "Using"

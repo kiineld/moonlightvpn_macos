@@ -209,7 +209,7 @@ struct ConnectScreen: View {
             HStack(spacing: 8) {
                 Overline(text: L.t(.servers, locale))
                 if !tunnel.nodes.isEmpty {
-                    Text("\(tunnel.selectableNodes.count) \(L.t(.nodesCount, locale))")
+                    Text(Format.nodes(tunnel.selectableNodes.count, locale: locale))
                         .font(.ml(12))
                         .foregroundStyle(palette.textMuted)
                 }

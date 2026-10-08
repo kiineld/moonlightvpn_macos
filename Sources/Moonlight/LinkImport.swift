@@ -50,6 +50,12 @@ struct LinkImportSheet: View {
     }
 
     @State private var phase: Phase = .ask
+    /// What adding the link does to the subscription already here, as it stood
+    /// when the user agreed. The import adopts the link part-way through, and
+    /// asked again after that every link is the current subscription: a first
+    /// subscription grew a line saying it "will be updated" half a second
+    /// before the sheet said it had been added.
+    @State private var noteWhenAsked: [String]?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,6 +95,7 @@ struct LinkImportSheet: View {
     }
 
     private func replacementNote(_ link: String) -> [String] {
+        if let noteWhenAsked { return noteWhenAsked }
         guard tunnel.hasSubscription else { return [] }
         return [L.t(tunnel.isCurrentSubscription(link) ? .linkSame : .linkReplaces, locale)]
     }
@@ -131,7 +138,7 @@ struct LinkImportSheet: View {
         if tunnel.info.daysLeft != nil || tunnel.info.expire == nil {
             parts.append(Format.days(tunnel.info.daysLeft, locale: locale))
         }
-        if !tunnel.nodes.isEmpty { parts.append("\(tunnel.nodes.count) \(L.t(.nodesCount, locale))") }
+        if !tunnel.nodes.isEmpty { parts.append(Format.nodes(tunnel.nodes.count, locale: locale)) }
         return parts.joined(separator: " · ")
     }
 
@@ -192,6 +199,7 @@ struct LinkImportSheet: View {
     }
 
     private func add(_ link: String) {
+        if noteWhenAsked == nil { noteWhenAsked = replacementNote(link) }
         phase = .adding
         Task {
             if await tunnel.importSubscription(link) {

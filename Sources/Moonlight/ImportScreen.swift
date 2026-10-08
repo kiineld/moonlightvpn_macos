@@ -145,7 +145,7 @@ struct ImportScreen: View {
         var parts: [String] = []
         if let title = tunnel.info.title { parts.append("«\(title)»") }
         if let days = tunnel.info.daysLeft { parts.append(Format.days(days, locale: locale)) }
-        parts.append("\(tunnel.nodes.count) \(L.t(.nodesCount, locale))")
+        parts.append(Format.nodes(tunnel.nodes.count, locale: locale))
         if let total = tunnel.info.total {
             parts.append(Format.bytes(total, locale: locale))
         }

@@ -37,6 +37,17 @@ func formatTests() {
         Check.equal(Format.days(nil, locale: .ru), "без срока", "no expiry is named")
         Check.equal(Format.days(nil, locale: .en), "no expiry", "no expiry is named (en)")
 
+        // The count was followed by one fixed word: "3 узлов", "1 nodes".
+        Check.equal(Format.nodes(1, locale: .ru), "1 узел", "ru one node")
+        Check.equal(Format.nodes(3, locale: .ru), "3 узла", "ru paucal for nodes")
+        Check.equal(Format.nodes(19, locale: .ru), "19 узлов", "ru plural for nodes")
+        Check.equal(Format.nodes(12, locale: .ru), "12 узлов", "ru teens are plural for nodes")
+        Check.equal(Format.nodes(21, locale: .ru), "21 узел", "ru 21 nodes is singular")
+        Check.equal(Format.nodes(23, locale: .ru), "23 узла", "ru 23 nodes is paucal")
+        Check.equal(Format.nodes(0, locale: .ru), "0 узлов", "ru no nodes")
+        Check.equal(Format.nodes(1, locale: .en), "1 node", "en one node")
+        Check.equal(Format.nodes(20, locale: .en), "20 nodes", "en plural for nodes")
+
         // The design's own string.
         Check.equal(Format.quota(used: 26_629_345_280, total: 107_374_182_400, locale: .ru),
                     "24,8 из 100\u{00A0}ГБ", "quota renders both halves in one unit")

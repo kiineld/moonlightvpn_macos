@@ -318,20 +318,42 @@ struct RulesScreen: View {
     private var applyBar: some View {
         ZStack {
             if dirty || failed {
+                // Every label keeps its own width. A row hands its flexible
+                // children equal shares of what is left rather than what each
+                // asks for: beside the shorter "Применяются…" the share that
+                // came to Apply was narrower than its label, and the label
+                // wrapped — "Применит", "ь" — for as long as applying took.
                 HStack(spacing: 14) {
-                    if applying {
-                        ProgressView().controlSize(.small)
-                        Text(L.t(.rulesApplying, locale))
-                            .font(.ml(12.5, .semibold))
-                            .foregroundStyle(palette.text2)
-                    } else {
-                        IconView(.circleAlert, size: 15)
-                            .foregroundStyle(failed ? palette.danger : palette.textMuted)
-                        Text(L.t(failed ? .rulesApplyFailed : .rulesUnsaved, locale))
-                            .font(.ml(12.5, .semibold))
-                            .foregroundStyle(failed ? palette.danger : palette.text2)
-                            .fixedSize()
+                    ZStack {
+                        if applying {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            IconView(.circleAlert, size: 15)
+                                .foregroundStyle(failed ? palette.danger : palette.textMuted)
+                        }
                     }
+                    .frame(width: 16, height: 16)
+                    // The note is as wide as the longest thing it says while
+                    // the bar is up, so pressing Apply changes the words and
+                    // leaves the buttons where the pointer is.
+                    ZStack(alignment: .leading) {
+                        Group {
+                            Text(L.t(.rulesUnsaved, locale))
+                            Text(L.t(.rulesApplying, locale))
+                            if failed { Text(L.t(.rulesApplyFailed, locale)) }
+                        }
+                        .hidden()
+                        .accessibilityHidden(true)
+                        if applying {
+                            Text(L.t(.rulesApplying, locale))
+                                .foregroundStyle(palette.text2)
+                        } else {
+                            Text(L.t(failed ? .rulesApplyFailed : .rulesUnsaved, locale))
+                                .foregroundStyle(failed ? palette.danger : palette.text2)
+                        }
+                    }
+                    .font(.ml(12.5, .semibold))
+                    .fixedSize()
                     Button {
                         withAnimation(Motion.standard) { draft = saved }
                         failed = false
@@ -339,6 +361,7 @@ struct RulesScreen: View {
                         Text(L.t(.rulesReset, locale))
                             .font(.ml(12.5, .heavy))
                             .foregroundStyle(palette.text)
+                            .fixedSize()
                             .padding(.horizontal, 12)
                             .frame(height: 32)
                     }
@@ -348,6 +371,7 @@ struct RulesScreen: View {
                         Text(L.t(.rulesApply, locale))
                             .font(.ml(12.5, .heavy))
                             .foregroundStyle(palette.textOnAccent)
+                            .fixedSize()
                             .padding(.horizontal, 16)
                             .frame(height: 32)
                             .mlGlass(.capsule, tint: palette.accent, fallback: palette.accent)

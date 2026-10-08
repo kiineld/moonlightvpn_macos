@@ -52,15 +52,7 @@ public enum Format {
     public static func days(_ count: Int?, locale: AppLocale = .ru) -> String {
         guard let count else { return locale == .ru ? "без срока" : "no expiry" }
         if locale == .en { return "\(count) day\(count == 1 ? "" : "s")" }
-
-        let mod100 = count % 100
-        let mod10 = count % 10
-        let word: String
-        if (11...14).contains(mod100) { word = "дней" }
-        else if mod10 == 1 { word = "день" }
-        else if (2...4).contains(mod10) { word = "дня" }
-        else { word = "дней" }
-        return "\(count) \(word)"
+        return "\(count) \(russian(count, "день", "дня", "дней"))"
     }
 
     /// Days left, or hours once it is under a day — "12 дней", "7 часов".
@@ -78,14 +70,27 @@ public enum Format {
     /// Russian's three-way plural again, for hours.
     public static func hours(_ count: Int, locale: AppLocale = .ru) -> String {
         if locale == .en { return "\(count) hour\(count == 1 ? "" : "s")" }
+        return "\(count) \(russian(count, "час", "часа", "часов"))"
+    }
+
+    /// "19 узлов" / "19 nodes". The count used to be followed by the one word
+    /// whatever it was, so a plan with three servers read "3 узлов" and one
+    /// with a single server, in English, "1 nodes".
+    public static func nodes(_ count: Int, locale: AppLocale = .ru) -> String {
+        if locale == .en { return "\(count) node\(count == 1 ? "" : "s")" }
+        return "\(count) \(russian(count, "узел", "узла", "узлов"))"
+    }
+
+    /// The form a Russian noun takes after `count`: the first for 1, 21, 31…,
+    /// the second for 2–4, 22–24…, the third for everything else — and for
+    /// 11–14, which take it despite what they end in.
+    private static func russian(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
         let mod100 = count % 100
         let mod10 = count % 10
-        let word: String
-        if (11...14).contains(mod100) { word = "часов" }
-        else if mod10 == 1 { word = "час" }
-        else if (2...4).contains(mod10) { word = "часа" }
-        else { word = "часов" }
-        return "\(count) \(word)"
+        if (11...14).contains(mod100) { return many }
+        if mod10 == 1 { return one }
+        if (2...4).contains(mod10) { return few }
+        return many
     }
 
     /// "24,8 из 100 ГБ" / "24.8 of 100 GB". An unlimited plan says so rather
