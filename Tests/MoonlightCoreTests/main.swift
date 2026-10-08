@@ -16,6 +16,7 @@ autoPickerTests()
 updaterTests()
 geodataTests()
 coreHealthTests()
+await socketOwnerTests()
 coreIntegrationTests()
 await controllerTests()
 

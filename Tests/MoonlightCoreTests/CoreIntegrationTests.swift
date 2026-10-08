@@ -222,6 +222,29 @@ func coreIntegrationTests() {
                 // timeout is the expected answer for a node that is down.
                 let delay = await api.delay(node: "🇳🇱 Amsterdam", timeout: 1500)
                 Check.isNil(delay, "an unreachable node measures as unknown, not as an error")
+
+                // Who opened a connection. The core says, where the system
+                // lets it read the socket table; where it does not — macOS 27
+                // — the app has to find out for itself. Either way the
+                // connections page needs a program to put the row under.
+                if let target = LoopbackSocket(), let client = LoopbackSocket(connectTo: 17_897) {
+                    let destination = "127.0.0.1:\(target.listenerPort)"
+                    let reply = client.exchange("CONNECT \(destination) HTTP/1.1\r\nHost: \(destination)\r\n\r\n")
+                    Check.isTrue(reply.contains(" 200 "), "the core carries a connection to a local port")
+                    var mine: MihomoAPI.Connection?
+                    for _ in 0..<30 where mine == nil {
+                        mine = try await api.connections().first { $0.host == destination }
+                        if mine == nil { try await Task.sleep(nanoseconds: 100_000_000) }
+                    }
+                    Check.equal(mine?.process, URL(fileURLWithPath: ownExecutable).lastPathComponent,
+                                "a connection is named after the program that opened it")
+                    Check.equal(mine.map { URL(fileURLWithPath: $0.processPath).resolvingSymlinksInPath().path },
+                                ownExecutable, "and carries its path, which is where the row's icon comes from")
+                    client.close()
+                    target.close()
+                } else {
+                    Check.isTrue(false, "loopback sockets open")
+                }
             } catch {
                 Check.isTrue(false, "API calls succeed — \(error)")
             }

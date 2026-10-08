@@ -310,7 +310,9 @@ public actor MihomoAPI {
               let list = object["connections"] as? [[String: Any]] else { return [] }
 
         let formatter = ISO8601DateFormatter.remnawave
-        return list.compactMap { entry in
+        /// Where each connection the core left unnamed came from.
+        var unnamed: [String: SocketOwner.Endpoint] = [:]
+        let parsed: [Connection] = list.compactMap { entry in
             guard let id = entry["id"] as? String else { return nil }
             let meta = entry["metadata"] as? [String: Any] ?? [:]
 
@@ -324,6 +326,14 @@ public actor MihomoAPI {
             let path = meta["processPath"] as? String ?? ""
             let process = (meta["process"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? (path.isEmpty ? "—" : (path as NSString).lastPathComponent)
+            if path.isEmpty, process == "—",
+               let source = (meta["sourcePort"] as? String).flatMap({ UInt16($0) })
+                   ?? (meta["sourcePort"] as? NSNumber)?.uint16Value {
+                unnamed[id] = SocketOwner.Endpoint(
+                    udp: (meta["network"] as? String)?.lowercased() == "udp",
+                    address: meta["sourceIP"] as? String ?? "", port: source
+                )
+            }
 
             return Connection(
                 id: id,
@@ -338,6 +348,20 @@ public actor MihomoAPI {
                 download: (entry["download"] as? NSNumber)?.int64Value ?? 0,
                 start: (entry["start"] as? String).flatMap { formatter.date(from: $0) } ?? Date()
             )
+        }
+
+        // The core names the process where the system lets it read the socket
+        // table. Where it does not — macOS 27, see ``SocketOwner`` — every
+        // connection arrives unnamed, and the app looks for the owner itself.
+        guard !unnamed.isEmpty else { return parsed }
+        let owners = await SocketOwner.shared.executables(for: unnamed)
+        guard !owners.isEmpty else { return parsed }
+        return parsed.map { connection in
+            guard let path = owners[connection.id] else { return connection }
+            var named = connection
+            named.processPath = path
+            named.process = (path as NSString).lastPathComponent
+            return named
         }
     }
 

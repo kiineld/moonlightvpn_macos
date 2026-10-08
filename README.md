@@ -171,6 +171,20 @@ still wants, so closing reads as "move this app onto the node I just picked"
 rather than as cutting it off. `find-process-mode` is therefore always on —
 it costs a `libproc` lookup per connection, and without it every row reads "—".
 
+On macOS 27 a core running as the user names nothing. Its lookup reads the
+kernel's socket table (`net.inet.tcp.pcblist_n`), and the system now hands that
+table to an ordinary process empty — the header still counts the sockets, the
+entries are gone. In system-proxy mode, which is where the core runs as the
+user, every connection came back unnamed and the page was one row, "—". So for
+a connection the core leaves unnamed the app asks the other way round
+(`SocketOwner`): which of the user's processes holds a socket bound to the
+address and port the connection came from (`proc_pidfdinfo`), once per
+connection — a millisecond for a few hundred processes. That names every
+program the user runs; a root daemon does not let its descriptors be listed and
+stays "—". Where the core does name the process nothing changes, and it is the
+page that is put right, not the core: a `PROCESS-NAME` rule is still matched by
+the core's own lookup.
+
 ### Page changes do not cross-fade
 
 Deliberately. Every transition tried — a crossfade, or `.identity` on the
