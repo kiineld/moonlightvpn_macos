@@ -14,6 +14,7 @@ import Yams
 ///   and an unbound listener is an open proxy on the network
 /// - the TUN block, when the tunnel runs in TUN mode
 /// - the user's own rules, around the panel's (see ``placeOwnRules(_:around:targets:)``)
+/// - a sniffer, when the panel has none switched on (see ``snifferBlock()``)
 public struct MihomoConfig {
 
     public struct Overrides: Sendable {
@@ -112,6 +113,16 @@ public struct MihomoConfig {
             .union(proxies.compactMap { $0["name"] as? String })
         let own = placeOwnRules(overrides.routingRules, around: rules, targets: targets)
         root["rules"] = own.before + own.rules
+
+        // ── Sniffer ─────────────────────────────────────────────────────────
+        // A panel that switched one on means it, and keeps it. One that has
+        // none — or has one switched off, as mihomo's sample config ships it —
+        // gets the app's, because without it the rules above go blind the
+        // moment a browser resolves names itself.
+        let panelSniffer = root["sniffer"] as? [String: Any]
+        if panelSniffer?["enable"] as? Bool != true {
+            root["sniffer"] = snifferBlock()
+        }
 
         // ── TUN ─────────────────────────────────────────────────────────────
         if overrides.mode == .tun {
@@ -236,6 +247,52 @@ public struct MihomoConfig {
         // A config with no groups gets the app's own when it is built.
         if groups.isEmpty, root["proxies"] != nil { groups = [defaultSelector, defaultAutoGroup] }
         return (groups, root["rules"] as? [String] ?? [])
+    }
+
+    // MARK: - Sniffer
+
+    /// Has the core read the hostname out of a connection that arrived as a
+    /// bare address.
+    ///
+    /// A browser on secure DNS — Chrome's "Use secure DNS" with Google or
+    /// Cloudflare — resolves names itself, over HTTPS, past the core's DNS. In
+    /// TUN its connections then reach the core as bare addresses, with nothing
+    /// for the fake-ip table to map back, so no `DOMAIN-SUFFIX` or `GEOSITE`
+    /// rule can match them: everything fell through to the catch-all and went
+    /// to the server as a bare address — a `.ru` site the panel sends `DIRECT`
+    /// included, and IPv6 ones the core's own DNS (`ipv6: false`) never hands
+    /// out — and the connections screen listed addresses where it had always
+    /// listed hosts. The browser saw `ERR_CONNECTION_CLOSED` wherever the far
+    /// end could not carry that.
+    ///
+    /// With the sniffer the core reads the name from the TLS ClientHello, the
+    /// QUIC Initial, or the HTTP `Host` header, matches the rules on it, and —
+    /// `override-destination` — dials the *name* rather than the address: the
+    /// server resolves it the way it can reach it, and a `DIRECT` connection
+    /// resolves it through the panel's DNS, Yandex for Russian names. Ports and
+    /// skips are those of the example configs in mihomo's documentation; the
+    /// three switches are the core's own defaults for a sniffer that is on,
+    /// written out so the config says what it does.
+    public static func snifferBlock() -> [String: Any] {
+        [
+            "enable": true,
+            // Sniff connections that came in as a bare address — the browser
+            // case — and those whose name the core could only recover from a
+            // real (not fake) IP it had answered with.
+            "parse-pure-ip": true,
+            "force-dns-mapping": true,
+            "override-destination": true,
+            // Ports as strings: a range has to be one, and the core's parser
+            // takes a list of them.
+            "sniff": [
+                "HTTP": ["ports": ["80", "8080-8880"]],
+                "TLS": ["ports": ["443", "8443"]],
+                "QUIC": ["ports": ["443", "8443"]],
+            ] as [String: Any],
+            // Apple's push service is left at the address the system chose for
+            // it, as those examples leave it.
+            "skip-domain": ["+.push.apple.com"],
+        ]
     }
 
     // MARK: - TUN

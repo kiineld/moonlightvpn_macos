@@ -117,6 +117,25 @@ in Settings; switching while connected reconnects. Asking for TUN there with no
 helper installed goes to Settings, with the install lit, and TUN comes on once
 the helper is in.
 
+### Browsers on secure DNS
+
+A browser with secure DNS on — Chrome's "Use secure DNS" with Google or
+Cloudflare — resolves names itself, over HTTPS, past the core's DNS. In TUN its
+connections then reach the core as **bare addresses**: the fake-ip table has
+nothing to map back, so no `DOMAIN-SUFFIX` or `GEOSITE` rule can match. Every
+one fell through to the catch-all and went to the server as an address — the
+`.ru` sites the subscription sends `DIRECT` included, and IPv6 addresses the
+core's own DNS never hands out — and the browser showed `ERR_CONNECTION_CLOSED`
+wherever the far end could not carry that. The connections page listed
+addresses instead of hosts.
+
+So the config always carries a **sniffer**: the core reads the name from the TLS
+ClientHello, the QUIC Initial or the HTTP `Host` header, routes on it, and dials
+the name rather than the address (`override-destination`), so the server
+resolves it the way it can reach it and a `DIRECT` connection resolves it
+through the subscription's DNS. A subscription that switches its own sniffer on
+keeps it; one with none, or with one switched off, gets the app's.
+
 ### The helper's trust boundary
 
 A root daemon taking instructions over a socket is a privilege escalation
@@ -391,7 +410,8 @@ order this client tries them is load-bearing:
 
 The panel's document is then kept **verbatim**. `MihomoConfig` overrides only
 what the client must own — the API address and secret, the local port,
-`allow-lan: false` and a loopback bind, the TUN block, and the user's own rules. A
+`allow-lan: false` and a loopback bind, the TUN block, the user's own rules, and
+a sniffer where the panel has none on (see *Browsers on secure DNS*). A
 panel that ships a `geosite:category-ru → DIRECT` rule means it, and its tuning
 is usually better than anything generated here.
 

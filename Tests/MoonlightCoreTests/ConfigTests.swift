@@ -177,6 +177,50 @@ func configTests() {
         Check.equal(dns?["nameserver"] as? [String], ["223.5.5.5"], "the panel's resolvers are kept")
     }
 
+    Check.suite("MihomoConfig · sniffer") {
+        // A browser on secure DNS reaches the core with bare addresses, and
+        // without a sniffer no domain rule can match them.
+        for mode in [TunnelMode.systemProxy, .tun] {
+            let root = load(try! MihomoConfig.build(panelYAML: panelYAML, overrides: overrides(mode: mode)))
+            let sniffer = root["sniffer"] as? [String: Any]
+            Check.equal(sniffer?["enable"] as? Bool, true, "a panel with no sniffer gets the app's in \(mode)")
+            Check.equal(sniffer?["parse-pure-ip"] as? Bool, true,
+                        "a connection to a bare address is sniffed")
+            Check.equal(sniffer?["override-destination"] as? Bool, true,
+                        "and dialled by the name found, not the address the browser resolved")
+            let sniff = sniffer?["sniff"] as? [String: Any]
+            Check.equal((sniff?["TLS"] as? [String: Any])?["ports"] as? [String], ["443", "8443"],
+                        "TLS is read on the HTTPS ports")
+            Check.equal((sniff?["QUIC"] as? [String: Any])?["ports"] as? [String], ["443", "8443"],
+                        "and so is QUIC, which a browser uses where a site offers it")
+            Check.equal((sniff?["HTTP"] as? [String: Any])?["ports"] as? [String], ["80", "8080-8880"],
+                        "a range survives as a string")
+        }
+
+        // One the panel switched on is its decision, kept as it wrote it.
+        let tuned = panelYAML + """
+
+        sniffer:
+          enable: true
+          override-destination: false
+          sniff:
+            TLS: {ports: [443]}
+        """
+        let kept = load(try! MihomoConfig.build(panelYAML: tuned, overrides: overrides()))["sniffer"] as? [String: Any]
+        Check.equal(kept?["override-destination"] as? Bool, false, "a panel's own sniffer is kept")
+        Check.isNil((kept?["sniff"] as? [String: Any])?["QUIC"], "and not merged with the app's")
+
+        // One switched off — mihomo's sample config ships it so — is not a
+        // reason to leave the rules blind.
+        let off = panelYAML + """
+
+        sniffer:
+          enable: false
+        """
+        let replaced = load(try! MihomoConfig.build(panelYAML: off, overrides: overrides()))["sniffer"] as? [String: Any]
+        Check.equal(replaced?["enable"] as? Bool, true, "a switched-off sniffer is replaced by the app's")
+    }
+
     Check.suite("MihomoConfig · failure modes") {
         var threw = false
         do { _ = try MihomoConfig.build(panelYAML: "just a string", overrides: overrides()) }

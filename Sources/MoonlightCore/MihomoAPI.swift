@@ -316,10 +316,16 @@ public actor MihomoAPI {
             guard let id = entry["id"] as? String else { return nil }
             let meta = entry["metadata"] as? [String: Any] ?? [:]
 
-            // `host` is empty for a connection opened straight to an address, in
-            // which case the destination IP is the only name there is.
-            let host = (meta["host"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                ?? (meta["destinationIP"] as? String) ?? "—"
+            // `host` is empty for a connection opened straight to an address.
+            // The sniffer then usually has the name — in `host` itself when it
+            // overrides the destination, as the app's does, in `sniffHost` when
+            // a panel's own sniffer does not — and failing that the destination
+            // IP is the only name there is.
+            let nonEmpty = { (key: String) -> String? in
+                guard let value = meta[key] as? String, !value.isEmpty else { return nil }
+                return value
+            }
+            let host = nonEmpty("host") ?? nonEmpty("sniffHost") ?? nonEmpty("destinationIP") ?? "—"
             let port = (meta["destinationPort"] as? String)
                 ?? (meta["destinationPort"] as? NSNumber)?.stringValue
 
