@@ -84,6 +84,8 @@ final class CoreSupervisor {
             // Empty data is EOF: the core exited and closed its end. A handler
             // left installed at EOF fires again immediately and forever — one
             // core per thread spinning at 100% CPU, one more for every restart.
+            // Taken off here and not when the core exits: an exit noticed
+            // first would drop the core's last lines, which are why it failed.
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
                 return
@@ -94,10 +96,6 @@ final class CoreSupervisor {
             lastLog.append(contentsOf: text.split(whereSeparator: \.isNewline).map(String.init))
             if lastLog.count > 100 { lastLog.removeFirst(lastLog.count - 100) }
             lock.unlock()
-        }
-
-        process.terminationHandler = { _ in
-            pipe.fileHandleForReading.readabilityHandler = nil
         }
 
         try process.run()
